@@ -1,0 +1,302 @@
+schedule:
+  timezone: Europe/Dublin
+  send_time: "07:30"
+  # The run goes ahead if it starts within this many minutes after send_time.
+  # Must stay below 60 so only one of the two UTC cron entries fires.
+  window_minutes: 55
+
+location:
+  name: 都柏林
+  latitude: 53.35
+  longitude: -6.26
+
+weather:
+  # The hours summarised in the brief are clothing.windows.day.
+  timeout_seconds: 10
+
+brief:
+  # Everything the brief writes itself. Placeholders in {braces} are filled in.
+  title: "每日简报：{month}{day}日 {weekday}"
+  weekdays: [周一, 周二, 周三, 周四, 周五, 周六, 周日]
+  months: [1月, 2月, 3月, 4月, 5月, 6月, 7月, 8月, 9月, 10月, 11月, 12月]
+  headings:
+    weather: 🌤️ 天气
+    clothing: 👕 穿衣建议
+    news: 📰 新闻
+  unavailable: 暂无
+  weather_line: "{city}：气温 {temp}，体感 {feels}，降雨 {rain_mm} 毫米（概率 {rain}%），风速 {wind} 公里/小时，紫外线指数 {uv}"
+  temp_range: "{low}~{high}°C"
+  temp_single: "{low}°C"
+  person_line: "{emoji} {name}：{items}"
+  lang: zh
+  footer: "生成于 {time} · {city}"
+  weather_labels:
+    temp: 气温
+    feels: 体感
+    rain: 降雨
+    wind: 风速
+    gust: 阵风
+    uv: 紫外线
+  alerts:
+    rain_light: "🌦️ 有小雨，带伞或带帽外套"
+    rain_steady: "🌧️ 有持续降雨，穿防水外套"
+    wind: "💨 阵风很大，别打伞"
+    uv: "🧴 紫外线较强，注意防晒"
+  # The big emoji in the header: that of the first alert, or `default` on a quiet day.
+  icons:
+    rain_steady: "🌧️"
+    rain_light: "🌦️"
+    wind: "💨"
+    uv: "☀️"
+    default: "🌤️"
+  all_clear: "😊 今天没什么要特别注意的"
+  window_label: "{start}–{end} 点出门"
+
+people:
+  # `windows` are the hours each person is outside (names from clothing.windows).
+  # They dress for the first one; the others are checked for rain and for a
+  # change in temperature later in the day.
+  - name: 老公
+    emoji: "👨"
+    offset: 0
+    windows: [morning, lunch, evening]
+  - name: 老婆
+    emoji: "👩"
+    offset: -3  # 怕冷: dressed as if it were 3°C colder
+    windows: [morning, lunch, evening]
+  - name: 孩子
+    emoji: "🧒"
+    offset: 0
+    child: true
+    windows: [school_run, pickup]
+
+clothing:
+  # Local hours, end excluded. `day` is used for the weather warnings.
+  windows:
+    morning: [7, 10]
+    lunch: [12, 14]
+    evening: [16, 19]
+    school_run: [8, 9]
+    pickup: [13, 15]
+    day: [7, 19]
+  # Sustained wind (km/h) makes it feel colder: take this many degrees off.
+  wind_chill:
+    - {min: 15, minus: 1}
+    - {min: 30, minus: 2}
+    - {min: 45, minus: 3}
+  # Checked top to bottom against air temperature (°C), less the wind step,
+  # plus the person's offset. The last tier has no minimum and catches the rest.
+  tiers:
+    - {min: 19, top: "短袖"}
+    - {min: 15, top: "薄长袖", outer: "薄外套"}
+    - {min: 11, top: "长袖 + 薄毛衣", outer: "外套"}
+    - {min: 7, top: "毛衣", outer: "厚外套"}
+    - {min: 3, top: "毛衣 + 保暖内衣", outer: "保暖大衣", extras: "帽子 + 手套"}
+    - {top: "毛衣 + 保暖内衣", outer: "羽绒服", extras: "帽子 + 手套 + 围巾"}
+  # A note when a later window is this much warmer or colder and in another tier.
+  change_later:
+    min_degrees: 3
+    warmer: "午后回暖，可减一层"
+    colder: "傍晚降温，多带一层"
+  rain:
+    # Light: this much in total, or one hour that is both likely and wet.
+    light: {total_mm: 0.3, probability: 60, hour_mm: 0.1}
+    # Steady: one properly wet hour, or this much in total.
+    steady: {total_mm: 3.0, hour_mm: 1.0}
+    umbrella_max_gust: 40  # km/h: above this an umbrella is useless, so a hood instead
+    umbrella: "带折叠伞"
+    hooded_outer: "带帽{outer}"
+    waterproof_outer: "防水{outer}"
+    no_outer:  # when the temperature tier has no outer layer
+      light: "带件薄雨衣"
+      steady: "防水外套"
+  wind:
+    gust_threshold: 65  # km/h
+    advice: "风大别打伞"
+  uv:
+    - {min: 6, advice: "防晒霜 + 帽子 + 墨镜", child_advice: "防晒霜 + 遮阳帽"}
+    - {min: 3, advice: "防晒霜", child_advice: "防晒霜 + 遮阳帽"}
+  child:
+    boots: "雨靴"  # steady rain only
+    spare:
+      light: "书包备袜子"
+      steady: "书包备袜子和上衣"
+    dark: "穿亮色/反光外套"  # school run before sunrise or pickup after sunset
+
+news:
+  # Words that move a story up within its section (whole words for English,
+  # plain match for Chinese; case-insensitive). A title match counts double a
+  # description match, and each distinct word counts once. A section can add
+  # its own `keywords`, and `min_score: 1` keeps only stories that match.
+  keywords:
+    - Java
+    - JDK
+    - Spring
+    - Angular
+    - Kubernetes
+    - K8s
+    - Docker
+    - AWS
+    - Oracle
+    - Lambda
+    - EKS
+    - S3
+    - AI
+    - LLM
+    - Claude
+    - OpenAI
+    - Gemini
+    - agent
+    - security
+    - CVE
+    - vulnerability
+    - outage
+    - release
+    - 人工智能
+    - 大模型
+    - 智能体
+    - 云原生
+    - 开源
+    - 数据库
+    - 漏洞
+    - 安全
+    - 云计算
+    - 芯片
+  # Each section has its own feeds and number of slots, so no topic crowds out another.
+  # `name` is what the email shows as the source. `parser` is for sites with no RSS.
+  groups:
+    - name: 🎬 内娱
+      limit: 5
+      use_global_keywords: false
+      max_per_source: 5  # a single site: let it fill the section
+      feeds:
+        - url: https://ent.sina.cn/
+          parser: sina_ent
+          name: 新浪娱乐
+    - name: 🌏 中文新闻
+      limit: 3
+      use_global_keywords: false
+      max_per_source: 1  # one headline per outlet
+      feeds:
+        - url: https://feeds.bbci.co.uk/zhongwen/simp/rss.xml
+          name: BBC 中文
+        - url: https://cn.nytimes.com/rss/
+          name: 纽约时报中文
+        - url: https://rss.dw.com/xml/rss-chi-all
+          name: 德国之声
+        - url: https://www.ftchinese.com/rss/news
+          name: FT 中文
+    - name: 📱 中文科技
+      limit: 4
+      feeds:
+        - url: https://www.infoq.cn/feed
+          name: InfoQ 中文
+        - url: https://www.qbitai.com/feed
+          name: 量子位
+        - url: https://www.oschina.net/news/rss
+          name: 开源中国
+        - url: https://www.solidot.org/index.rss
+          name: Solidot
+        - url: https://www.ithome.com/rss/
+          name: IT之家
+    - name: 🚙 中文汽车
+      limit: 3
+      use_global_keywords: false
+      max_per_source: 2
+      keywords: [汽车, 新能源, 电动车, 纯电, 增程, 新车, 车型, 试驾, 续航, 智驾, 自动驾驶, 特斯拉, 比亚迪, 小米汽车, 小米SU7, 小米YU7, 蔚来, 小鹏, 问界, 极氪, 零跑, 理想汽车]
+      feeds:
+        - url: https://www.dongchedi.com/
+          parser: dongchedi
+          name: 懂车帝
+        - url: https://www.autohome.com.cn/news/
+          parser: autohome
+          name: 汽车之家
+    - name: 🍀 爱尔兰
+      limit: 3
+      use_global_keywords: false
+      feeds:
+        - url: https://www.rte.ie/feeds/rss/?index=/news/
+          name: RTÉ News
+        - url: https://www.rte.ie/feeds/rss/?index=/news/business/
+          name: RTÉ Business
+        - url: https://www.thejournal.ie/feed/
+          name: TheJournal.ie
+    - name: 💻 IT 与 AI
+      limit: 4
+      feeds:
+        - url: https://feed.infoq.com/
+          name: InfoQ
+        - url: https://hnrss.org/frontpage
+          name: Hacker News
+        - url: https://www.theregister.com/headlines.atom
+          name: The Register
+        - url: https://techcrunch.com/category/artificial-intelligence/feed/
+          name: TechCrunch AI
+        - url: https://arstechnica.com/ai/feed/
+          name: Ars Technica AI
+        - url: https://openai.com/news/rss.xml
+          name: OpenAI
+        - url: https://blog.google/technology/ai/rss/
+          name: Google AI
+    - name: 🛠️ 技术栈
+      limit: 3
+      feeds:
+        - url: https://inside.java/feed.xml
+          name: Inside Java
+        - url: https://spring.io/blog.atom
+          name: Spring
+        - url: https://blog.angular.dev/feed
+          name: Angular
+        - url: https://kubernetes.io/feed.xml
+          name: Kubernetes
+        - url: https://www.docker.com/blog/feed/
+          name: Docker
+        - url: https://aws.amazon.com/blogs/aws/feed/
+          name: AWS News Blog
+        - url: https://aws.amazon.com/about-aws/whats-new/recent/feed/
+          name: AWS What's New
+    - name: 🚗 汽车
+      limit: 5
+      use_global_keywords: false
+      max_per_source: 1  # one headline per site, in the order listed below
+      feeds:
+        - url: https://www.completecar.ie/
+          parser: completecar
+          name: Complete Car
+        - url: https://www.carwow.co.uk/news
+          parser: carwow
+          name: Carwow
+        - url: https://www.autocar.co.uk/rss
+          name: Autocar
+        - url: https://www.caranddriver.com/rss/all.xml/
+          name: Car and Driver
+        - url: https://www.motor1.com/rss/articles/all/
+          name: Motor1
+        - url: https://electrek.co/feed/
+          name: Electrek
+  max_items_per_feed: 10
+  # Sent with every feed request: some sites reject unknown clients.
+  user_agent: Mozilla/5.0 (compatible; daily-brief/1.0)
+  # Dated items older than this are dropped, so slow blogs don't repeat daily.
+  max_age_hours: 30
+  # Item descriptions are cut to this length, since only keyword matching uses them.
+  summary_max_chars: 300
+  # The most any one feed may contribute to a section.
+  max_per_source: 3
+  timeout_seconds: 10  # per feed
+  # Sites fetched at the same time.
+  max_workers: 12
+
+notify:
+  # Every channel listed here gets the brief. Available: email, wecom.
+  channels:
+    - email
+  retries: 2
+  retry_delay_seconds: 5
+  timeout_seconds: 10
+  email:
+    smtp_host: smtp.gmail.com
+    smtp_port: 465
+    recipients:
+      # Testing: only me for now. Add the wife's address when ready.
+      - me@example.com

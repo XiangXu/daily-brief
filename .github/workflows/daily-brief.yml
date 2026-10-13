@@ -1,0 +1,31 @@
+name: Daily Brief
+
+on:
+  schedule:
+    # Cron is UTC. One entry per DST offset: main.py only proceeds when it is
+    # 07:30 in Europe/Dublin, so exactly one of these sends the brief each day.
+    - cron: "30 6 * * *"
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Send the brief
+        # A manual run sends straight away, whatever the time.
+        run: python main.py ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}

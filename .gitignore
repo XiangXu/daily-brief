@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Generated briefs contain family info: never commit them
+briefs/
+*.brief.md
+*.brief.txt
+brief.html
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
