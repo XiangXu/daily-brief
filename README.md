@@ -6,7 +6,7 @@ Every morning at **07:30 Dublin time**, a one-page brief lands in your inbox (an
 
 - 🌦️ **Weather** for the day, from [Open-Meteo](https://open-meteo.com/). Free, no API key.
 - 🧥 **Clothing advice** for each family member, based on the hours they are actually outside. No more "why didn't you tell me it would rain at pickup?"
-- 📰 **News headlines** with links, in tidy sections: 🍀 Ireland, 💻 IT and AI, 🛠️ tech stack, 🚗 cars, 📱 Chinese tech, 🌏 Chinese news and 🎬 entertainment.
+- 📰 **News headlines** with links, in tidy sections: 🎬 entertainment, 🌏 Chinese news, 📱 Chinese tech, 🚙 Chinese cars, 🏀 Hupu (NBA and daily-hot forum threads), 🍀 Ireland, 💻 IT and AI, 🛠️ tech stack and 🚗 cars.
 
 The brief is written in Chinese 🇨🇳 and headlines stay in the language of their source. There is no LLM 🤖🚫 and no paid API: news is ranked by keyword from RSS feeds and a few site parsers.
 

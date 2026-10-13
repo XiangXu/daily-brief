@@ -36,7 +36,7 @@ def test_every_news_group_is_usable(real_config):
 
 def test_car_sites_without_feeds_are_configured(real_config):
     feeds = [f for g in real_config["news"]["groups"] for f in g["feeds"]]
-    assert {f["parser"] for f in feeds if f.get("parser")} == {"completecar", "dongchedi", "autohome", "carwow", "sina_ent"}
+    assert {f["parser"] for f in feeds if f.get("parser")} == {"completecar", "dongchedi", "autohome", "carwow", "sina_ent", "hupu"}
 
 
 def test_there_is_no_sports_section(real_config):
@@ -53,7 +53,7 @@ def test_irish_car_sites_come_first_in_the_car_section(real_config):
 
 def test_entertainment_and_chinese_sections_come_first(real_config):
     names = [g["name"].split(" ", 1)[1] for g in real_config["news"]["groups"]]
-    assert names == ["内娱", "中文新闻", "中文科技", "中文汽车", "爱尔兰", "IT 与 AI", "技术栈", "汽车"]
+    assert names == ["内娱", "中文新闻", "中文科技", "中文汽车", "虎扑", "爱尔兰", "IT 与 AI", "技术栈", "汽车"]
 
 
 def test_single_site_sections_can_fill_their_slots(real_config):
@@ -115,3 +115,12 @@ def test_feed_names_are_unique_within_a_section(real_config):
 def test_feeds_are_fetched_in_parallel_in_production_and_in_order_in_tests(real_config, config):
     assert real_config["news"]["max_workers"] > 1
     assert config["news"]["max_workers"] == 1
+
+
+def test_hupu_section_reads_two_boards_and_neither_fills_it(real_config):
+    group = next(g for g in real_config["news"]["groups"] if g["name"].endswith("虎扑"))
+    assert [f["url"] for f in group["feeds"]] == ["https://bbs.hupu.com/nba", "https://bbs.hupu.com/topic-daily-hot"]
+    assert {f["parser"] for f in group["feeds"]} == {"hupu"}
+    assert group["limit"] == 5 and group["max_per_source"] < group["limit"]
+    # Forum threads match no tech keyword: the boards' own hot order ranks them.
+    assert group["use_global_keywords"] is False and group.get("min_score", 0) == 0

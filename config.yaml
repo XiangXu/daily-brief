@@ -211,6 +211,17 @@ news:
         - url: https://www.autohome.com.cn/news/
           parser: autohome
           name: 汽车之家
+    - name: 🏀 虎扑
+      limit: 5
+      use_global_keywords: false  # forum threads: keep each board's own hot order
+      max_per_source: 3  # neither board fills the section
+      feeds:
+        - url: https://bbs.hupu.com/nba
+          parser: hupu
+          name: 虎扑 NBA
+        - url: https://bbs.hupu.com/topic-daily-hot
+          parser: hupu
+          name: 虎扑热榜
     - name: 🍀 爱尔兰
       limit: 3
       use_global_keywords: false
