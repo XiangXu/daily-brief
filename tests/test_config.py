@@ -87,6 +87,7 @@ def test_rain_wind_and_uv_rules_are_consistent(real_config):
     assert rain["light"]["total_mm"] < rain["steady"]["total_mm"]
     assert rain["light"]["hour_mm"] < rain["steady"]["hour_mm"]
     assert rain["umbrella_max_gust"] < clothing["wind"]["gust_threshold"]
+    assert clothing["wind"]["breezy_gust"] < clothing["wind"]["gust_threshold"]
     assert "{outer}" in rain["hooded_outer"] and "{outer}" in rain["waterproof_outer"]
     steps = [step["min"] for step in clothing["wind_chill"]]
     assert steps == sorted(steps)
@@ -95,7 +96,7 @@ def test_rain_wind_and_uv_rules_are_consistent(real_config):
 
 
 def test_every_alert_the_code_can_raise_has_wording(real_config):
-    assert set(real_config["brief"]["alerts"]) == {"rain_light", "rain_steady", "wind", "uv"}
+    assert set(real_config["brief"]["alerts"]) == {"rain_light", "rain_steady", "breezy", "wind", "uv"}
     assert set(real_config["brief"]["icons"]) == set(real_config["brief"]["alerts"]) | {"default"}
 
 

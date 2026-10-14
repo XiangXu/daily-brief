@@ -45,12 +45,14 @@ brief:
   alerts:
     rain_light: "🌦️ 有小雨，带伞或带帽外套"
     rain_steady: "🌧️ 有持续降雨，穿防水外套"
+    breezy: "🌬️ 风大，注意防风保暖"
     wind: "💨 阵风很大，别打伞"
     uv: "🧴 紫外线较强，注意防晒"
   # The big emoji in the header: that of the first alert, or `default` on a quiet day.
   icons:
     rain_steady: "🌧️"
     rain_light: "🌦️"
+    breezy: "🌬️"
     wind: "💨"
     uv: "☀️"
     default: "🌤️"
@@ -67,7 +69,7 @@ people:
     windows: [morning, lunch, evening]
   - name: 老婆
     emoji: "👩"
-    offset: -3  # 怕冷: dressed as if it were 3°C colder
+    offset: -5  # 怕冷: dressed as if it were 5°C colder
     windows: [morning, lunch, evening]
   - name: 孩子
     emoji: "🧒"
@@ -116,7 +118,8 @@ clothing:
       light: "带件薄雨衣"
       steady: "防水外套"
   wind:
-    gust_threshold: 65  # km/h
+    gust_threshold: 65  # km/h: a gale, so skip the umbrella
+    breezy_gust: 45  # km/h: windy enough to mention, below the gale warning
     advice: "风大别打伞"
   uv:
     - {min: 6, advice: "防晒霜 + 帽子 + 墨镜", child_advice: "防晒霜 + 遮阳帽"}

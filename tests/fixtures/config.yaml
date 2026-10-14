@@ -47,12 +47,14 @@ brief:
   alerts:
     rain_light: "Light rain: an umbrella or a hood"
     rain_steady: "Steady rain: wear waterproofs"
+    breezy: "Windy: wrap up against the wind"
     wind: "Very gusty: skip the umbrella"
     uv: "UV 3 or more: use sunscreen"
   # The big emoji in the header: that of the first alert, or `default` on a quiet day.
   icons:
     rain_steady: "🌧️"
     rain_light: "🌦️"
+    breezy: "🌬️"
     wind: "💨"
     uv: "☀️"
     default: "🌤️"
@@ -69,7 +71,7 @@ people:
     windows: [morning, lunch, evening]
   - name: Wife
     emoji: "👩"
-    offset: -3  # feels the cold: dressed as if it were 3°C colder
+    offset: -5  # feels the cold: dressed as if it were 5°C colder
     windows: [morning, lunch, evening]
   - name: Child
     emoji: "🧒"
@@ -118,7 +120,8 @@ clothing:
       light: "light rain jacket"
       steady: "waterproof jacket"
   wind:
-    gust_threshold: 65  # km/h
+    gust_threshold: 65  # km/h: a gale, so skip the umbrella
+    breezy_gust: 45  # km/h: windy enough to mention, below the gale warning
     advice: "Very windy: skip the umbrella"
   uv:
     - {min: 6, advice: "sunscreen + hat + sunglasses", child_advice: "sunscreen + sun hat"}

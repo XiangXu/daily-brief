@@ -130,7 +130,9 @@ def test_html_shows_alerts_only_when_triggered(config):
     gale = html_for(config, forecast=make_day({11: dict(precipitation=0.4)}, gusts=70))
     assert "Light rain: an umbrella or a hood" in gale and "Very gusty: skip the umbrella" in gale
     calm = html_for(config, forecast=CALM)
-    for text in ("Steady rain", "Light rain", "Very gusty", "UV 3 or more"):
+    breezy = html_for(config, forecast=make_day(gusts=50))
+    assert "Windy: wrap up" in breezy and "Very gusty" not in breezy
+    for text in ("Steady rain", "Light rain", "Very gusty", "Windy: wrap up", "UV 3 or more"):
         assert text not in calm
 
 
@@ -140,6 +142,7 @@ def test_html_shows_alerts_only_when_triggered(config):
         (WEATHER, "🌧️"),
         (make_day({11: dict(precipitation=0.4)}), "🌦️"),
         (make_day(gusts=70), "💨"),
+        (make_day(gusts=50), "🌬️"),
         (make_day(uv=5), "☀️"),
         (CALM, "🌤️"),
         (Weather(10, 90, 40, 5), "🌤️"),  # no hourly data: nothing to judge by

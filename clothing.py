@@ -64,7 +64,7 @@ def advise_people(people, weather, rules) -> list[tuple[dict, list[str]]]:
 def alerts(weather, rules) -> list[str]:
     """What stands out about the whole day, as keys in this order:
 
-    "rain_light" or "rain_steady", then "wind", then "uv".
+    "rain_light" or "rain_steady", then "wind" (or the milder "breezy"), then "uv".
     """
     day = _window(weather, rules, "day")
     if not day:
@@ -73,8 +73,11 @@ def alerts(weather, rules) -> list[str]:
     rain = _rain_level(day, rules["rain"])
     if rain:
         triggered.append(f"rain_{rain}")
-    if max(hour.wind_gusts for hour in day) >= rules["wind"]["gust_threshold"]:
+    gust = max(hour.wind_gusts for hour in day)
+    if gust >= rules["wind"]["gust_threshold"]:
         triggered.append("wind")
+    elif gust >= rules["wind"]["breezy_gust"]:
+        triggered.append("breezy")
     if _uv_rule(max(hour.uv_index for hour in day), rules["uv"]):
         triggered.append("uv")
     return triggered

@@ -57,7 +57,7 @@ Each person dresses for the hours they are actually outside, not for the worst h
 People and their `windows` (named hour ranges in `clothing.windows`, end excluded):
 
 - `me`: offset 0, windows morning 7-10, lunch 12-14, evening 16-19.
-- `wife`: offset -3 (feels the cold; tunable), same windows.
+- `wife`: offset -5 (feels the cold; tunable), same windows.
 - `child`: offset 0, `child: true`, windows school_run 8-9 and pickup 13-15.
 
 A person dresses for their first window; the others are checked for rain and for a change later in the day. `day` (7-19) is used only for the weather warnings.
@@ -81,12 +81,12 @@ A person dresses for their first window; the others are checked for rain and for
 
 **Other rules**
 
-- Gusts >= 65 km/h: a "skip the umbrella" warning.
+- Gusts >= 65 km/h: a "skip the umbrella" warning. Gusts >= 45 km/h (`clothing.wind.breezy_gust`): a milder "windy, wrap up" day alert instead.
 - UV >= 3: sunscreen. UV >= 6: sunscreen + hat + sunglasses. The child gets sunscreen + sun hat from 3.
 - A later window that is >= 3 degrees warmer or colder and in a different tier adds a "take a layer off" or "bring a layer" note.
 - Child only: a hood instead of an umbrella in light rain; rain boots only in steady rain; spare socks (light rain) or spare socks and top (steady rain); a bright or reflective jacket if the school run starts before sunrise or pickup ends after sunset.
 
-`clothing.alerts(weather, rules)` returns `rain_light` or `rain_steady`, `wind`, `uv` for the whole day. It drives the header icon, the warning chips and the text version, so keep `brief.alerts` in step with it.
+`clothing.alerts(weather, rules)` returns `rain_light` or `rain_steady`, `wind` or `breezy`, `uv` for the whole day. It drives the header icon, the warning chips and the text version, so keep `brief.alerts` in step with it.
 
 Output is one line per person, e.g. `Child: sweater + hooded jacket + spare socks in the bag`.
 

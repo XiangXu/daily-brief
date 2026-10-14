@@ -281,7 +281,10 @@ def test_unknown_sunrise_means_no_daylight_advice(rules):
         (dict(), None, []),
         (dict(), {11: dict(precipitation=0.4)}, ["rain_light"]),
         (dict(), {11: dict(precipitation=1.0)}, ["rain_steady"]),
-        (dict(gusts=65), None, ["wind"]),
+        (dict(gusts=44.9), None, []),
+        (dict(gusts=45), None, ["breezy"]),
+        (dict(gusts=64.9), None, ["breezy"]),
+        (dict(gusts=65), None, ["wind"]),  # a gale replaces the milder warning
         (dict(uv=3), None, ["uv"]),
         (dict(gusts=70, uv=7), {11: dict(precipitation=4.0)}, ["rain_steady", "wind", "uv"]),
         (dict(probability=90), None, []),  # likely, but no amount forecast
@@ -289,6 +292,12 @@ def test_unknown_sunrise_means_no_daylight_advice(rules):
 )
 def test_alerts_describe_the_whole_day(rules, kwargs, overrides, expected):
     assert alerts(make_day(overrides, **kwargs), rules) == expected
+
+
+def test_a_windy_afternoon_is_flagged_even_if_the_morning_is_calm(rules):
+    # Dublin, 2026-10-14: gusts of about 30 in the morning, 57 at 15:00.
+    weather = make_day(span(7, 13, gusts=33) | span(13, 19, gusts=57), wind=20)
+    assert alerts(weather, rules) == ["breezy"]
 
 
 def test_alerts_ignore_the_night(rules):
