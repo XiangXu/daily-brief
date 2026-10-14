@@ -85,7 +85,9 @@ The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no co
 
 1. 🔒 Keep personal data out of the repository: email addresses live in secrets, and names in `config.yaml` stay generic.
 2. 🤫 Add the variables above as repository secrets.
-3. 🕖 The workflow runs at 06:00, 07:00 and 08:00 UTC. The script checks the date and time in `Europe/Dublin`, so exactly one of the three runs sends the brief, on workdays and days off, in summer and in winter, with no manual changes for daylight saving.
+3. 🕖 The workflow runs at 06:07, 07:07 and 08:07 UTC (off the hour, when GitHub is less busy). The script checks the date and time in `Europe/Dublin`, so exactly one of the three runs sends the brief, on workdays and days off, in summer and in winter, with no manual changes for daylight saving.
+
+GitHub pauses scheduled workflows in public repos after 60 days without activity, so each run re-enables its own workflow to keep the schedule going 🔁.
 
 Can't wait until tomorrow? Trigger the workflow by hand: **Actions → Daily Brief → Run workflow** ▶️
 

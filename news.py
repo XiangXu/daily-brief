@@ -126,7 +126,11 @@ def _read_feeds(feeds, pages, settings) -> list[dict]:
         if isinstance(page, Exception):
             log.warning("Feed %s failed: %s", url, type(page).__name__)
             continue
-        entries = PARSERS[parser](page, url)
+        try:
+            entries = PARSERS[parser](page, url)
+        except Exception as exc:  # noqa: BLE001 - a site redesign breaks only its own feed
+            log.warning("Feed %s could not be read: %s", url, type(exc).__name__)
+            continue
         if not entries:
             log.warning("Feed %s returned no items (did the site change?)", url)
         fresh = [e for e in entries if _is_fresh(e, oldest)]

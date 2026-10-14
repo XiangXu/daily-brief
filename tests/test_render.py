@@ -91,7 +91,7 @@ def test_html_shows_each_clothing_item_as_its_own_pill(config):
     page = html_for(config)
     for pill in ("waterproof warm coat", "hat + gloves", "sunscreen + sun hat", "waterproof down coat"):
         assert f">{pill}<" in page
-    assert ">Warms up later: you can take a layer off<" in page
+    assert ">💡 Warms up later: you can take a layer off<" in page  # a note line, not a pill
 
 
 def test_html_headlines_are_links_with_escaped_urls(config):
@@ -264,8 +264,18 @@ def test_compose_holds_everything_both_versions_show(config):
     assert brief.title == "Daily Brief: Tue 13 Oct" and brief.city == "Dublin"
     assert brief.alerts == ("rain_steady", "uv")
     assert brief.weather_line.startswith("Dublin: 4 to 10°C")
-    assert [person["name"] for person, _ in brief.advice] == ["Me", "Wife", "Child"]
+    assert [o.person["name"] for o in brief.advice] == ["Me", "Wife", "Child"]
+    child = brief.advice[2]
+    assert child.hours == "out 8–9"
+    assert child.notes == ["Warms up later: you can take a layer off"]
+    assert "Warms up later: you can take a layer off" not in child.wear
+    assert brief.reminders == ("Steady rain: wear waterproofs", "UV 3 or more: use sunscreen")
     assert brief.groups == HEADLINES
+
+
+def test_compose_gives_an_all_clear_reminder_on_a_quiet_day_only(config):
+    assert render.compose(NOW, config, CALM, HEADLINES).reminders == ("Nothing special to watch today",)
+    assert render.compose(NOW, config, None, HEADLINES).reminders == ()
 
 
 def test_compose_marks_missing_parts(config):
@@ -278,18 +288,75 @@ def test_compose_marks_missing_parts(config):
 def test_text_and_html_agree_because_they_share_one_brief(config):
     brief = render.compose(NOW, config, WEATHER, HEADLINES)
     plain, rich = render.text(brief, config), render.html(brief, config)
-    for wording in ("Steady rain: wear waterproofs", "waterproof warm coat", "Java 27 released"):
+    for wording in (
+        "Steady rain: wear waterproofs", "waterproof warm coat", "Java 27 released",
+        "out 7–10", "gusts 34", "Warms up later: you can take a layer off",
+    ):
         assert wording in plain and wording in rich
+    calm = render.compose(NOW, config, CALM, HEADLINES)
+    assert "Nothing special to watch today" in render.text(calm, config)
+
+
+def test_text_opens_with_the_reminders_like_the_html_header(config):
+    plain = render.text(render.compose(NOW, config, WEATHER, HEADLINES), config)
+    assert plain.startswith("Steady rain: wear waterproofs\nUV 3 or more: use sunscreen\n\n## Weather\n")
+
+
+def test_pills_are_separated_so_copied_text_does_not_run_together(config):
+    page = html_for(config)
+    assert '</span> <span class="pill"' in page
+
+
+def test_notes_are_a_line_under_the_pills_not_pills(config):
+    page = html_for(config)
+    note = "Warms up later: you can take a layer off"
+    assert f">{note}<" not in page  # no pill holds just the note
+    assert f"💡 {note}" in page
+
+
+def test_one_person_failing_keeps_the_others(config, caplog):
+    from unittest.mock import patch
+
+    real = render.clothing.outfit
+
+    def outfit(person, *args):
+        if person["name"] == "Wife":
+            raise ValueError("no forecast hours")
+        return real(person, *args)
+
+    with patch.object(render.clothing, "outfit", side_effect=outfit):
+        brief = render.compose(NOW, config, WEATHER, HEADLINES)
+        plain, rich = render.text(brief, config), render.html(brief, config)
+
+    assert "Wife (out 7–10): unavailable" in plain
+    assert "Me (out 7–10): sweater" in plain and "Child (out 8–9): sweater" in plain
+    assert rich.count(">unavailable<") == 1
+    assert "Wife" in caplog.text
+
+
+def test_a_broken_headline_blanks_only_the_news(config, caplog):
+    broken = [{"name": "Group", "items": [{"source": "S"}]}]  # no title or link
+    brief = render.compose(NOW, config, WEATHER, broken)
+    plain, rich = render.text(brief, config), render.html(brief, config)
+    assert "## News\nunavailable" in plain and "Dublin: 4 to 10°C" in plain
+    assert rich.count(">unavailable<") == 1 and "waterproof warm coat" in rich
+    assert "news failed" in caplog.text
+
+
+def test_empty_brief_has_only_the_title(config):
+    brief = render.empty(NOW, config)
+    assert brief.title == "Daily Brief: Tue 13 Oct"
+    assert render.text(brief, config).count("unavailable") == 3
 
 
 def test_a_clothing_failure_is_logged_once_and_blanks_only_that_section(config, caplog):
     from unittest.mock import patch
 
-    with patch.object(render.clothing, "advise", side_effect=RuntimeError("bug")):
+    with patch.object(render.clothing, "outfit", side_effect=RuntimeError("bug")):
         brief = render.compose(NOW, config, WEATHER, HEADLINES)
         plain, rich = render.text(brief, config), render.html(brief, config)
 
-    assert caplog.text.count("clothing failed") == 1
+    assert caplog.text.count("Traceback") == 3  # once per person
     assert "## What to wear\nunavailable" in plain and rich.count(">unavailable<") == 1
     assert brief.alerts == ("rain_steady", "uv")  # the reminder still shows
 

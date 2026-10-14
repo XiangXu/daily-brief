@@ -7,8 +7,10 @@ The HTML uses tables and inline styles because email clients ignore most
 modern CSS. Every piece of feed or config text goes through `escape`.
 """
 
+import dataclasses
 import logging
 from dataclasses import dataclass
+from typing import NamedTuple
 from html import escape
 from urllib.parse import urlsplit
 
@@ -90,6 +92,15 @@ def _temperature(low, high, brief) -> str:
     return brief["temp_range"].format(low=low_text, high=f"{high:.0f}")
 
 
+class Outfit(NamedTuple):
+    """One person's advice. `wear` is None if it could not be worked out."""
+
+    person: dict
+    wear: list[str] | None
+    notes: list[str]  # reminders shown apart from the clothes, e.g. "warms up later"
+    hours: str  # the hours they are dressed for, e.g. "7–10 点出门", or ""
+
+
 @dataclass(frozen=True)
 class Brief:
     """What the brief says. None (or empty) marks a part that is unavailable."""
@@ -100,33 +111,68 @@ class Brief:
     values: dict | None  # the forecast as display strings
     weather_line: str | None  # the one-line weather summary
     alerts: tuple[str, ...]  # keys of `brief.alerts`, most important first
-    advice: list | None  # [(person, items)]
+    reminders: tuple[str, ...]  # the alert lines, the all-clear line, or nothing without a forecast
+    advice: list[Outfit] | None
     groups: list | None  # [{"name", "items"}]
 
 
 def compose(now, config, forecast, headlines) -> Brief:
     """Derive everything the brief shows. A part that fails is left unavailable."""
     brief = config["brief"]
-    city = config["location"]["name"]
     values = weather_line = advice = None
-    alerts = ()
+    alerts = reminders = ()
     if forecast is not None:
         values = weather_values(forecast, brief)
-        weather_line = brief["weather_line"].format(city=city, **values)
+        weather_line = brief["weather_line"].format(city=config["location"]["name"], **values)
         alerts = tuple(_guarded("alerts", clothing.alerts, forecast, config["clothing"]) or ())
-        advice = _guarded(
-            "clothing", clothing.advise_people, config["people"], forecast, config["clothing"]
-        )
-    return Brief(
-        title=title(now, config),
-        city=city,
-        footer=brief["footer"].format(time=f"{now:%H:%M}", city=city),
+        reminders = tuple(brief["alerts"][key] for key in alerts) or (brief["all_clear"],)
+        advice = _advice(forecast, config)
+    return dataclasses.replace(
+        empty(now, config),
         values=values,
         weather_line=weather_line,
         alerts=alerts,
+        reminders=reminders,
         advice=advice,
         groups=headlines or None,
     )
+
+
+def empty(now, config) -> Brief:
+    """A brief with every part unavailable: the fallback when composing fails."""
+    city = config["location"]["name"]
+    return Brief(
+        title=title(now, config),
+        city=city,
+        footer=config["brief"]["footer"].format(time=f"{now:%H:%M}", city=city),
+        values=None,
+        weather_line=None,
+        alerts=(),
+        reminders=(),
+        advice=None,
+        groups=None,
+    )
+
+
+def _advice(forecast, config) -> list[Outfit] | None:
+    """Each person's outfit. One person failing leaves the others; all failing is None."""
+    outfits = []
+    for person in config["people"]:
+        result = _guarded(
+            f"clothing for {person.get('name')}", clothing.outfit, person, forecast, config["clothing"]
+        )
+        wear, notes = result or (None, [])
+        outfits.append(Outfit(person, wear, notes, _hours(person, config)))
+    return outfits if any(outfit.wear is not None for outfit in outfits) else None
+
+
+def _hours(person, config) -> str:
+    """The hours this person is dressed for, e.g. "7–10 点出门". Empty if unknown."""
+    names = person.get("windows")
+    if not names:
+        return ""
+    start, end = config["clothing"]["windows"][names[0]]
+    return config["brief"]["window_label"].format(start=start, end=end)
 
 
 def _guarded(name, func, *args):
@@ -139,35 +185,51 @@ def _guarded(name, func, *args):
 
 
 def text(brief, config) -> str:
-    """The plain-text body (also WeCom's markdown)."""
+    """The plain-text body (also WeCom's markdown). The reminders open it, as in the HTML."""
     wording = config["brief"]
     unavailable = wording["unavailable"]
+    sections = [
+        ("weather", brief.weather_line),
+        ("clothing", _part("clothing", _clothing_text, brief.advice, wording)),
+        ("news", _part("news", _news_text, brief.groups)),
+    ]
+    blocks = ["\n".join(brief.reminders)] if brief.reminders else []
+    blocks += [f"## {wording['headings'][key]}\n{body or unavailable}" for key, body in sections]
+    return "\n\n".join(blocks)
 
-    weather = unavailable
-    if brief.weather_line is not None:
-        weather = "\n".join([brief.weather_line, *(wording["alerts"][key] for key in brief.alerts)])
 
-    wear = unavailable
-    if brief.advice is not None:
-        wear = "\n".join(
-            clothing.format_line(person, items, wording["person_line"])
-            for person, items in brief.advice
-        )
+def _part(name, func, data, *args):
+    """Format one section. A section that cannot be formatted is None (unavailable)."""
+    if not data:
+        return None
+    return _guarded(name, func, data, *args)
 
-    news = unavailable
-    if brief.groups:
-        blocks = []
-        for group in brief.groups:
-            lines = [f"### {group['name']}"]
-            for headline in group["items"]:
-                lines.append(f"- {headline['title']} ({headline['source']})")
-                if headline["link"]:
-                    lines.append(f"  {headline['link']}")
-            blocks.append("\n".join(lines))
-        news = "\n\n".join(blocks)
 
-    sections = [("weather", weather), ("clothing", wear), ("news", news)]
-    return "\n\n".join(f"## {wording['headings'][key]}\n{body}" for key, body in sections)
+def _clothing_text(advice, wording) -> str:
+    return "\n".join(_person_line(outfit, wording) for outfit in advice)
+
+
+def _person_line(outfit, wording) -> str:
+    hours = wording["person_hours"].format(label=outfit.hours) if outfit.hours else ""
+    items = outfit.wear if outfit.wear is not None else [wording["unavailable"]]
+    notes = " " + _notes(outfit.notes, wording) if outfit.notes else ""
+    return clothing.format_line(outfit.person, items, wording["person_line"], hours=hours, notes=notes)
+
+
+def _notes(notes, wording) -> str:
+    return wording["person_notes"].format(notes=wording["notes_separator"].join(notes))
+
+
+def _news_text(groups) -> str:
+    blocks = []
+    for group in groups:
+        lines = [f"### {group['name']}"]
+        for headline in group["items"]:
+            lines.append(f"- {headline['title']} ({headline['source']})")
+            if headline["link"]:
+                lines.append(f"  {headline['link']}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def build_html(now, config, forecast, headlines) -> str:
@@ -182,12 +244,18 @@ def html(brief, config) -> str:
     preheader = brief.weather_line or ""
     sections = [
         _section(wording["headings"]["weather"], _weather(brief, wording)),
-        _section(wording["headings"]["clothing"], _clothing(brief, config)),
-        _section(wording["headings"]["news"], _news(brief.groups, wording)),
+        _section(
+            wording["headings"]["clothing"],
+            _part("clothing", _clothing, brief.advice, wording) or _unavailable(wording),
+        ),
+        _section(
+            wording["headings"]["news"],
+            _part("news", _news, brief.groups, wording) or _unavailable(wording),
+        ),
     ]
     reminders = "".join(
         f'<div style="font-size:17px;line-height:1.5;font-weight:700;color:#ffffff;">{escape(line)}</div>'
-        for line in _reminders(brief, wording)
+        for line in brief.reminders
     )
     if reminders:
         reminders = f'<div style="margin-top:12px;">{reminders}</div>'
@@ -225,13 +293,6 @@ def html(brief, config) -> str:
 </body>
 </html>
 """
-
-
-def _reminders(brief, wording) -> list[str]:
-    """What today needs, most important first. An all-clear line on a quiet day."""
-    if brief.values is None:
-        return []
-    return [wording["alerts"][key] for key in brief.alerts] or [wording["all_clear"]]
 
 
 def _icon(brief, wording) -> str:
@@ -293,45 +354,42 @@ def _stat_row(stats) -> str:
     return f"{TABLE}<tr>{spacer.join(cells)}</tr></table>"
 
 
-def _clothing(brief, config) -> str:
-    if brief.advice is None:
-        return _unavailable(config["brief"])
-
+def _clothing(advice, wording) -> str:
     rows = []
-    for person, items in brief.advice:
-        pills = "".join(
-            f'<span class="pill" style="display:inline-block;background:{PILL};color:{PILL_TEXT};'
-            f'border-radius:999px;padding:5px 12px;margin:3px 6px 3px 0;font-size:14px;line-height:1.4;">'
-            f"{escape(item)}</span>"
-            for item in items
+    for outfit in advice:
+        person = outfit.person
+        if outfit.wear is None:
+            items = f'<span class="muted" style="font-size:14px;color:{MUTED};">{escape(wording["unavailable"])}</span>'
+        else:
+            # A space between pills keeps copied text readable ("外套 雨靴", not "外套雨靴").
+            items = " ".join(
+                f'<span class="pill" style="display:inline-block;background:{PILL};color:{PILL_TEXT};'
+                f'border-radius:999px;padding:5px 12px;margin:3px 2px 3px 0;font-size:14px;line-height:1.4;">'
+                f"{escape(item)}</span>"
+                for item in outfit.wear
+            )
+        notes = (
+            f'<div class="muted" style="font-size:13px;line-height:1.5;color:{MUTED};margin-top:6px;">'
+            f"{escape(_notes(outfit.notes, wording))}</div>"
+            if outfit.notes
+            else ""
+        )
+        hours = (
+            f' <span class="muted" style="font-size:12px;font-weight:400;color:{MUTED};'
+            f'margin-left:4px;">{escape(outfit.hours)}</span>'
+            if outfit.hours
+            else ""
         )
         rows.append(
             f'<tr><td class="rule" style="padding:12px 0;border-top:1px solid {RULE};">'
             f'<div class="txt" style="font-size:15px;font-weight:700;color:{TEXT};margin-bottom:4px;">'
-            f'{escape(person.get("emoji", ""))} <span>{escape(person["name"])}</span>'
-            f"{_hours_label(person, config)}</div>"
-            f"{pills}</td></tr>"
+            f'{escape(person.get("emoji", ""))} <span>{escape(person["name"])}</span>{hours}</div>'
+            f"{items}{notes}</td></tr>"
         )
     return TABLE + "".join(rows) + "</table>"
 
 
-def _hours_label(person, config) -> str:
-    """The hours this person is dressed for, e.g. "7–10 点出门". Empty if unknown."""
-    names = person.get("windows")
-    if not names:
-        return ""
-    start, end = config["clothing"]["windows"][names[0]]
-    label = config["brief"]["window_label"].format(start=start, end=end)
-    return (
-        f' <span class="muted" style="font-size:12px;font-weight:400;color:{MUTED};'
-        f'margin-left:4px;">{escape(label)}</span>'
-    )
-
-
 def _news(groups, brief) -> str:
-    if not groups:
-        return _unavailable(brief)
-
     rows = []
     for group in groups:
         sources = {headline["source"] for headline in group["items"]}

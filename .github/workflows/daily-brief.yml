@@ -5,14 +5,17 @@ on:
     # Cron is UTC and Dublin is UTC+0 or UTC+1, so 07:00 (workdays) and
     # 08:00 (weekends and bank holidays) in Dublin fall at 06:00, 07:00 or
     # 08:00 UTC. main.py works out the day and time in Dublin and only one
-    # of these sends the brief each day.
-    - cron: "0 6 * * *"
-    - cron: "0 7 * * *"
-    - cron: "0 8 * * *"
+    # of these sends the brief each day. They run at :07 because GitHub delays
+    # or drops many runs scheduled on the hour, and a run that starts more than
+    # schedule.window_minutes late sends nothing.
+    - cron: "7 6 * * *"
+    - cron: "7 7 * * *"
+    - cron: "7 8 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write  # only to re-enable this workflow, see the last step
 
 jobs:
   brief:
@@ -33,3 +36,11 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+      - name: Keep the schedule alive
+        # GitHub pauses schedules in public repos after 60 days without activity.
+        # Re-enabling the workflow through the API restarts that clock.
+        if: always() && github.event_name == 'schedule'
+        continue-on-error: true
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/daily-brief.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}

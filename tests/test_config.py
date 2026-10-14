@@ -102,9 +102,10 @@ def test_every_alert_the_code_can_raise_has_wording(real_config):
 
 def test_weather_line_fills_with_the_values_the_code_provides(real_config):
     line = real_config["brief"]["weather_line"].format(
-        city="X", temp="1", feels="2", rain="3", rain_mm="4", wind="5", uv="6"
+        city="X", temp="1", feels="2", rain="3", rain_mm="4", wind="5", gust="7", uv="6"
     )
     assert "{" not in line
+    assert "{gust}" in real_config["brief"]["weather_line"]  # the text version shows gusts too
 
 
 def test_feed_names_are_unique_within_a_section(real_config):

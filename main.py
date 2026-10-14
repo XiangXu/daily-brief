@@ -58,7 +58,8 @@ def run(config, now, force=False, dry_run=False, html_out=None) -> int:
 
     forecast = _safe("weather", weather.fetch, config)
     headlines = _safe("news", news.get_headlines, config)
-    brief = render.compose(now, config, forecast, headlines)
+    # A bug in composing must not lose the morning: send a brief marked unavailable.
+    brief = _safe("brief", render.compose, now, config, forecast, headlines) or render.empty(now, config)
     title, body = brief.title, render.text(brief, config)
     # The rich version is a nicety: if it fails, the plain text still goes out.
     html = _safe("html", render.html, brief, config)

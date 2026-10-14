@@ -29,9 +29,13 @@ class ChannelConfigError(Exception):
     """The channel is misconfigured, so retrying cannot help."""
 
 
-def channel(name):
+def channel(name, split=None):
+    """Register a delivery function. `split(title, body, settings)` may turn one
+    brief into several (title, body) messages, each delivered and retried on its own.
+    """
+
     def register(func):
-        CHANNELS[name] = func
+        CHANNELS[name] = (func, split)
         return func
 
     return register
@@ -51,11 +55,16 @@ def send(title, body, config, html=None) -> dict[str, bool]:
 
 
 def _deliver(name, title, body, html, settings) -> bool:
-    handler = CHANNELS.get(name)
-    if handler is None:
+    if name not in CHANNELS:
         log.error("Unknown notify channel %r (available: %s)", name, ", ".join(CHANNELS))
         return False
+    handler, split = CHANNELS[name]
+    messages = split(title, body, settings) if split else [(title, body)]
+    return all(_attempt(name, handler, part, text, html, settings) for part, text in messages)
 
+
+def _attempt(name, handler, title, body, html, settings) -> bool:
+    """Deliver one message, retrying as configured. Never raises."""
     attempts = 1 + settings["retries"]
     for attempt in range(1, attempts + 1):
         try:
@@ -108,12 +117,50 @@ def _send_email(title, body, settings, html):
         server.send_message(message)
 
 
-@channel("wecom")
+def _wecom_messages(title, body, settings) -> list[tuple[str, str]]:
+    """Split the brief at blank lines (then lines) into messages WeCom accepts.
+
+    Each part is titled "title (1/3)" from `notify.wecom.part_title`; a brief
+    that fits stays one message with the plain title.
+    """
+    if len(_wecom_content(title, body).encode("utf-8")) <= WECOM_MAX_BYTES:
+        return [(title, body)]
+    # Room for the longest part title, e.g. "(99/99)".
+    longest = settings["wecom"]["part_title"].format(title=title, part=99, total=99)
+    budget = WECOM_MAX_BYTES - len(_wecom_content(longest, "").encode("utf-8"))
+    pieces = []
+    for block in body.split("\n\n"):
+        if _size(block) <= budget:
+            pieces.append(("\n\n", block))
+        else:  # a long section goes line by line; a line that alone is too long is cut
+            pieces += [("\n", _truncate(line, budget)) for line in block.split("\n")]
+    parts = []
+    for joiner, piece in pieces:
+        if parts and _size(parts[-1] + joiner + piece) <= budget:
+            parts[-1] += joiner + piece
+        else:
+            parts.append(piece)
+    template = settings["wecom"]["part_title"]
+    return [
+        (template.format(title=title, part=number, total=len(parts)), part)
+        for number, part in enumerate(parts, 1)
+    ]
+
+
+def _wecom_content(title, body) -> str:
+    return f"# {title}\n\n{body}"
+
+
+def _size(text) -> int:
+    return len(text.encode("utf-8"))
+
+
+@channel("wecom", split=_wecom_messages)
 def _send_wecom(title, body, settings, html):
     url = _env("WECOM_WEBHOOK_URL")
     payload = {
         "msgtype": "markdown",
-        "markdown": {"content": _truncate(f"# {title}\n\n{body}", WECOM_MAX_BYTES)},
+        "markdown": {"content": _truncate(_wecom_content(title, body), WECOM_MAX_BYTES)},
     }
     # requests errors include the webhook URL, which is a secret: never log them.
     try:

@@ -31,10 +31,14 @@ brief:
     clothing: What to wear
     news: News
   unavailable: unavailable
-  weather_line: "{city}: {temp}, feels like {feels}, rain {rain_mm} mm ({rain}%), wind {wind} km/h, UV {uv}"
+  weather_line: "{city}: {temp}, feels like {feels}, rain {rain_mm} mm ({rain}%), wind {wind} km/h (gusts {gust}), UV {uv}"
   temp_range: "{low} to {high}°C"
   temp_single: "{low}°C"
-  person_line: "{name}: {items}"
+  # {hours} and {notes} are filled from person_hours and person_notes, or left empty.
+  person_line: "{name}{hours}: {items}{notes}"
+  person_hours: " ({label})"  # label is window_label
+  person_notes: "💡 {notes}"  # also the note line under the pills in the email
+  notes_separator: "; "
   lang: en
   footer: "Generated at {time} · {city}"
   weather_labels:
@@ -273,6 +277,9 @@ notify:
   retries: 2
   retry_delay_seconds: 5
   timeout_seconds: 10
+  wecom:
+    # A long brief goes out as several messages, each under WeCom's size limit.
+    part_title: "{title} ({part}/{total})"
   email:
     smtp_host: smtp.gmail.com
     smtp_port: 465

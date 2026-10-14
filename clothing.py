@@ -14,15 +14,23 @@ import math
 
 
 def advise(person, weather, rules) -> list[str]:
-    """Return the clothing items for one person, in the order to show them.
+    """Return the clothing items for one person, then any notes, in the order to show them.
 
     `person` is an entry from `people` in config.yaml, `weather` is a
     `weather.Weather`, and `rules` is the `clothing` section of config.yaml.
     """
+    wear, notes = outfit(person, weather, rules)
+    return wear + notes
+
+
+def outfit(person, weather, rules) -> tuple[list[str], list[str]]:
+    """(what to wear, notes): garments and gear, then reminders about the day."""
     names = person.get("windows") or ["day"]
-    windows = [hours for name in names if (hours := _window(weather, rules, name))]
-    if not windows:
+    # They dress for the first window, so without it there is nothing to go on:
+    # dressing for a later window would not match the hours the brief shows.
+    if not _window(weather, rules, names[0]):
         raise ValueError(f"no forecast hours for {person.get('name', 'this person')}")
+    windows = [hours for name in names if (hours := _window(weather, rules, name))]
 
     is_child = person.get("child", False)
     offset = person.get("offset", 0)
@@ -36,29 +44,25 @@ def advise(person, weather, rules) -> list[str]:
     gust = max(hour.wind_gusts for hour in outdoors)
 
     outer, rain_items = _rain_gear(tier.get("outer"), rain, gust, is_child, rules)
-    items = [tier["top"]]
+    wear = [tier["top"]]
     if outer:
-        items.append(outer)
+        wear.append(outer)
     if tier.get("extras"):
-        items.append(tier["extras"])
-    items += rain_items
+        wear.append(tier["extras"])
+    wear += rain_items
     if is_child:
-        items += _child_items(names, rain, weather, rules)
-
-    change = _change_later(felt, index, windows[1:], offset, rules)
-    if change:
-        items.append(change)
-    if gust >= rules["wind"]["gust_threshold"]:
-        items.append(rules["wind"]["advice"])
+        wear += _child_items(names, rain, weather, rules)
     uv = _uv_rule(max(hour.uv_index for hour in outdoors), rules["uv"])
     if uv:
-        items.append(uv["child_advice"] if is_child else uv["advice"])
-    return items
+        wear.append(uv["child_advice"] if is_child else uv["advice"])
 
-
-def advise_people(people, weather, rules) -> list[tuple[dict, list[str]]]:
-    """Pair each person with their clothing items."""
-    return [(person, advise(person, weather, rules)) for person in people]
+    notes = []
+    change = _change_later(felt, index, windows[1:], offset, rules)
+    if change:
+        notes.append(change)
+    if gust >= rules["wind"]["gust_threshold"]:
+        notes.append(rules["wind"]["advice"])
+    return wear, notes
 
 
 def alerts(weather, rules) -> list[str]:
@@ -83,10 +87,14 @@ def alerts(weather, rules) -> list[str]:
     return triggered
 
 
-def format_line(person, items, template="{name}: {items}") -> str:
-    """One line per person, e.g. `Child: light jacket + raincoat + boots`."""
+def format_line(person, items, template="{name}: {items}", hours="", notes="") -> str:
+    """One line per person, e.g. `Child: light jacket + raincoat + boots`.
+
+    `hours` and `notes` are ready-made fragments for the template, empty if none.
+    """
     return template.format(
-        name=person["name"], emoji=person.get("emoji", ""), items=" + ".join(items)
+        name=person["name"], emoji=person.get("emoji", ""), items=" + ".join(items),
+        hours=hours, notes=notes,
     ).strip()
 
 

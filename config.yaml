@@ -29,10 +29,14 @@ brief:
     clothing: 👕 穿衣建议
     news: 📰 新闻
   unavailable: 暂无
-  weather_line: "{city}：气温 {temp}，体感 {feels}，降雨 {rain_mm} 毫米（概率 {rain}%），风速 {wind} 公里/小时，紫外线指数 {uv}"
+  weather_line: "{city}：气温 {temp}，体感 {feels}，降雨 {rain_mm} 毫米（概率 {rain}%），风速 {wind} 公里/小时（阵风 {gust}），紫外线指数 {uv}"
   temp_range: "{low}~{high}°C"
   temp_single: "{low}°C"
-  person_line: "{emoji} {name}：{items}"
+  # {hours} and {notes} are filled from person_hours and person_notes, or left empty.
+  person_line: "{emoji} {name}{hours}：{items}{notes}"
+  person_hours: "（{label}）"  # label is window_label
+  person_notes: "💡 {notes}"  # also the note line under the pills in the email
+  notes_separator: "；"
   lang: zh
   footer: "生成于 {time} · {city}"
   weather_labels:
@@ -129,7 +133,7 @@ clothing:
     spare:
       light: "书包备袜子"
       steady: "书包备袜子和上衣"
-    dark: "穿亮色/反光外套"  # school run before sunrise or pickup after sunset
+    dark: "穿亮色或反光外套"  # school run before sunrise or pickup after sunset
 
 news:
   # Words that move a story up within its section (whole words for English,
@@ -313,6 +317,9 @@ notify:
   retries: 2
   retry_delay_seconds: 5
   timeout_seconds: 10
+  wecom:
+    # A long brief goes out as several messages, each under WeCom's size limit.
+    part_title: "{title}（{part}/{total}）"
   email:
     smtp_host: smtp.gmail.com
     smtp_port: 465

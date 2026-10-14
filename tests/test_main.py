@@ -55,6 +55,15 @@ def test_run_falls_back_to_plain_text_if_html_fails(config, sources):
     assert "Story one" in send.call_args.args[1]
 
 
+def test_run_still_sends_if_the_brief_cannot_be_composed(config, sources, caplog):
+    _, _, send = sources
+    with patch.object(main.render, "compose", side_effect=RuntimeError("bug")):
+        assert main.run(config, ON_TIME) == 0
+    title, body = send.call_args.args[:2]
+    assert title == "Daily Brief: Tue 13 Oct" and body.count("unavailable") == 3
+    assert "brief failed" in caplog.text
+
+
 def test_run_html_out_writes_a_preview_file(config, sources, tmp_path):
     _, _, send = sources
     out = tmp_path / "brief.html"
@@ -140,7 +149,14 @@ def _cron_times(day):
     return times
 
 
-@pytest.mark.parametrize("delay_minutes", [0, 20, 54])
+def test_crons_avoid_the_busy_top_of_the_hour(real_config):
+    # GitHub delays or drops many runs scheduled at :00. A start more than
+    # window_minutes late would skip the day without any failed run.
+    minutes = {t.minute for t in _cron_times(date(2026, 1, 1))}
+    assert len(minutes) == 1 and 0 < minutes.pop() < real_config["schedule"]["window_minutes"]
+
+
+@pytest.mark.parametrize("delay_minutes", [0, 20, 47])
 def test_workflow_sends_exactly_once_a_day_at_the_dublin_send_time(real_config, delay_minutes):
     schedule = real_config["schedule"]
     days_off = holidays.Ireland(years=[2026, 2027])
@@ -152,7 +168,8 @@ def test_workflow_sends_exactly_once_a_day_at_the_dublin_send_time(real_config, 
         kind = "day_off" if day.weekday() >= 5 or day in days_off else "weekday"
         hour, minute = map(int, schedule["send_times"][kind].split(":"))
         on_time = datetime(day.year, day.month, day.day, hour, minute, tzinfo=DUBLIN)
-        assert sent[0] == on_time + timedelta(minutes=delay_minutes)
+        cron_minute = _cron_times(day)[0].minute
+        assert sent[0] == on_time + timedelta(minutes=cron_minute + delay_minutes)
         day += timedelta(days=1)
 
 
@@ -166,14 +183,14 @@ def test_build_brief_has_every_section(config):
     title, body = main.build_brief(ON_TIME, config, WEATHER, HEADLINES)
 
     assert title == "Daily Brief: Tue 13 Oct"
-    assert "Dublin: 4 to 10°C, feels like 7 to 14°C, rain 2.0 mm (60%), wind 34 km/h, UV 4" in body
-    assert "Steady rain: wear waterproofs\nUV 3 or more: use sunscreen" in body
-    assert "Me: sweater + thermal layer + waterproof warm coat + hat + gloves + sunscreen" in body
-    assert "Wife: sweater + thermal layer + waterproof down coat + hat + gloves + scarf + sunscreen" in body
+    assert "Dublin: 4 to 10°C, feels like 7 to 14°C, rain 2.0 mm (60%), wind 34 km/h (gusts 34), UV 4" in body
+    assert body.startswith("Steady rain: wear waterproofs\nUV 3 or more: use sunscreen\n\n")
+    assert "Me (out 7–10): sweater + thermal layer + waterproof warm coat + hat + gloves + sunscreen" in body
+    assert "Wife (out 7–10): sweater + thermal layer + waterproof down coat + hat + gloves + scarf + sunscreen" in body
     # The child is not out at noon, so no rain gear, but is out when it warms up.
     assert (
-        "Child: sweater + thermal layer + warm coat + hat + gloves"
-        " + Warms up later: you can take a layer off + sunscreen + sun hat"
+        "Child (out 8–9): sweater + thermal layer + warm coat + hat + gloves + sunscreen + sun hat"
+        " 💡 Warms up later: you can take a layer off"
     ) in body
     assert "### IT\n- Story one (InfoQ)\n  https://x.example/1\n- Story two (AWS)" in body
     assert "### 中文\n- 故事三 (少数派)\n  https://x.example/3" in body
@@ -192,7 +209,7 @@ def test_build_brief_marks_missing_news_unavailable(config):
     _, body = main.build_brief(ON_TIME, config, WEATHER, None)
 
     assert "## News\nunavailable" in body
-    assert "Me: sweater + thermal layer" in body
+    assert "Me (out 7–10): sweater + thermal layer" in body
 
 
 def test_run_sends_the_brief(config, sources):
@@ -235,7 +252,7 @@ def test_run_survives_every_source_failing(config, sources):
 
 def test_run_survives_a_clothing_failure(config, sources):
     _, _, send = sources
-    with patch.object(main.render.clothing, "advise", side_effect=RuntimeError("bug")):
+    with patch.object(main.render.clothing, "outfit", side_effect=RuntimeError("bug")):
         assert main.run(config, ON_TIME) == 0
 
     body = send.call_args.args[1]
@@ -295,7 +312,8 @@ def test_real_config_builds_a_chinese_brief(real_config):
         assert heading in body
     assert "气温 4~10°C，体感 7~14°C，降雨 2.0 毫米（概率 60%）" in body
     assert "🌧️ 有持续降雨，穿防水外套" in body and "防水保暖大衣" in body
-    assert "老公：" in body and "老婆：" in body and "孩子：" in body
+    assert "老公（7–10 点出门）：" in body and "老婆（7–10 点出门）：" in body and "孩子（8–9 点出门）：" in body
+    assert "阵风" in body
     assert "unavailable" not in body and "{" not in body and "}" not in body
     assert "- Story one (InfoQ)" in body  # headlines stay as published
 

@@ -134,6 +134,47 @@ def test_wecom_truncates_to_the_api_byte_limit(cfg):
     assert content.endswith("…")
 
 
+def _wecom_contents(post):
+    return [call.kwargs["json"]["markdown"]["content"] for call in post.call_args_list]
+
+
+def test_wecom_splits_a_long_brief_into_numbered_messages(cfg):
+    cfg["notify"]["channels"] = ["wecom"]
+    sections = [f"## Section {n}\n" + "\n".join(f"- headline {n}.{i} https://x.example/{i}" for i in range(40)) for n in range(4)]
+    body = "\n\n".join(sections)
+    assert len(body.encode("utf-8")) > notify.WECOM_MAX_BYTES
+    with patch.object(notify.requests, "post", return_value=wecom_response()) as post:
+        assert notify.send("Title", body, cfg) == {"wecom": True}
+
+    contents = _wecom_contents(post)
+    total = len(contents)
+    assert total > 1
+    for part, content in enumerate(contents, 1):
+        assert content.startswith(f"# Title ({part}/{total})\n\n")
+        assert len(content.encode("utf-8")) <= notify.WECOM_MAX_BYTES
+    # Nothing is lost or cut: every headline arrives once, in order.
+    received = "\n".join(c.split("\n\n", 1)[1] for c in contents)
+    lines = [line for line in received.splitlines() if line.startswith("- ")]
+    assert lines == [line for line in body.splitlines() if line.startswith("- ")]
+
+
+def test_wecom_short_brief_is_one_message_without_a_part_number(cfg):
+    cfg["notify"]["channels"] = ["wecom"]
+    with patch.object(notify.requests, "post", return_value=wecom_response()) as post:
+        notify.send("Title", "Body", cfg)
+    assert _wecom_contents(post) == ["# Title\n\nBody"]
+
+
+def test_wecom_retries_only_the_part_that_failed(cfg):
+    cfg["notify"]["channels"] = ["wecom"]
+    body = "\n\n".join("x" * 3000 for _ in range(2))
+    replies = [wecom_response(), wecom_response(errcode=1), wecom_response()]
+    with patch.object(notify.requests, "post", side_effect=replies) as post:
+        assert notify.send("Title", body, cfg) == {"wecom": True}
+    contents = _wecom_contents(post)
+    assert [c.split("\n", 1)[0] for c in contents] == ["# Title (1/2)", "# Title (2/2)", "# Title (2/2)"]
+
+
 def test_all_listed_channels_are_sent_independently(cfg, smtp):
     cfg["notify"]["channels"] = ["email", "wecom"]
     _, server = smtp

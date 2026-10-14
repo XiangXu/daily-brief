@@ -1,6 +1,8 @@
 import pytest
 
-from clothing import advise, advise_people, alerts, format_line
+import dataclasses
+
+from clothing import advise, alerts, format_line, outfit
 from helpers import make_day, span, todays_weather
 from weather import Weather
 
@@ -225,9 +227,9 @@ def test_warm_sunny_day_that_heats_up(rules):
         span(7, 10, temperature=16) | span(12, 14, uv=6.0),
         temperature=22, wind=10, sunrise="2026-06-15T05:00", sunset="2026-06-15T21:50",
     )
-    assert advise(ME, weather, rules) == [LIGHT_TOP, LIGHT_OUT, WARMER, UV_HIGH]
-    assert advise(WIFE, weather, rules) == [MID_TOP, MID_OUT, WARMER, UV_HIGH]
-    assert advise(CHILD, weather, rules) == [LIGHT_TOP, LIGHT_OUT, WARMER, UV_CHILD]
+    assert advise(ME, weather, rules) == [LIGHT_TOP, LIGHT_OUT, UV_HIGH, WARMER]
+    assert advise(WIFE, weather, rules) == [MID_TOP, MID_OUT, UV_HIGH, WARMER]
+    assert advise(CHILD, weather, rules) == [LIGHT_TOP, LIGHT_OUT, UV_CHILD, WARMER]
 
 
 @pytest.mark.parametrize(
@@ -312,9 +314,32 @@ def test_a_forecast_without_hours_cannot_be_advised_on(rules):
         advise(ME, weather, rules)
 
 
-def test_advise_people_pairs_each_person_with_their_advice(rules):
-    result = advise_people([ME, WIFE], make_day(temperature=16, wind=0), rules)
-    assert result == [(ME, [LIGHT_TOP, LIGHT_OUT]), (WIFE, [MID_TOP, MID_OUT])]
+def test_outfit_keeps_notes_apart_from_what_to_wear(rules):
+    weather = make_day(span(7, 10, temperature=16) | span(12, 14, uv=6.0), temperature=22, wind=10, gusts=70)
+    wear, notes = outfit(ME, weather, rules)
+    assert wear == [LIGHT_TOP, LIGHT_OUT, UV_HIGH]
+    assert notes == [WARMER, WINDY]
+    assert advise(ME, weather, rules) == wear + notes
+
+
+def test_a_quiet_day_has_no_notes(rules):
+    assert outfit(ME, make_day(temperature=16, wind=0), rules) == ([LIGHT_TOP, LIGHT_OUT], [])
+
+
+def _without_hours(weather, start, end):
+    return dataclasses.replace(weather, hours=[h for h in weather.hours if not start <= h.hour < end])
+
+
+def test_missing_first_window_is_not_silently_replaced_by_a_later_one(rules):
+    # Dressing for lunch while showing "out 7-10" would be wrong: give no advice instead.
+    weather = _without_hours(make_day(span(12, 14, temperature=25), temperature=5, wind=0), 7, 10)
+    with pytest.raises(ValueError):
+        advise(ME, weather, rules)
+
+
+def test_a_missing_later_window_is_skipped(rules):
+    weather = _without_hours(make_day(temperature=16, wind=0), 16, 19)
+    assert advise(ME, weather, rules) == [LIGHT_TOP, LIGHT_OUT]
 
 
 def test_format_line():
@@ -324,6 +349,12 @@ def test_format_line():
 def test_format_line_uses_the_template():
     line = format_line({"name": "孩子"}, ["外套", "雨靴"], "{name}：{items}")
     assert line == "孩子：外套 + 雨靴"
+
+
+def test_format_line_fills_extra_fragments():
+    line = format_line({"name": "Me"}, [SHORT], "{name}{hours}: {items}{notes}", hours=" (out 7–10)", notes=" 💡 x")
+    assert line == f"Me (out 7–10): {SHORT} 💡 x"
+    assert format_line({"name": "Me"}, [SHORT], "{name}{hours}: {items}{notes}") == f"Me: {SHORT}"
 
 
 def test_format_line_fills_the_emoji_placeholder():

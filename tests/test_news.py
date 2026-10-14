@@ -140,6 +140,17 @@ def test_fetch_feeds_skips_a_failing_feed(cfg):
         assert [i["title"] for i in fetch(cfg)] == ["B1"]
 
 
+def test_a_parser_that_crashes_skips_only_its_feed(cfg, caplog):
+    feeds = [{"url": "https://a.example/page", "name": "A", "parser": "carwow"}, "https://b.example/rss"]
+    responses = [feed_response(b"<html></html>"), feed_response(rss("Feed B", ["B1"]))]
+    with (
+        patch.object(news.requests, "get", side_effect=responses),
+        patch.dict(news.PARSERS, {"carwow": Mock(side_effect=AttributeError("redesign"))}),
+    ):
+        assert [i["title"] for i in news.fetch_feeds(feeds, cfg["news"])] == ["B1"]
+    assert "https://a.example/page" in caplog.text and "AttributeError" in caplog.text
+
+
 def test_fetch_feeds_skips_http_errors_and_garbage(cfg):
     responses = [feed_response(b"", status=503), feed_response(b"not a feed")]
     with patch.object(news.requests, "get", side_effect=responses):
