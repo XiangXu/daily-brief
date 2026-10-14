@@ -183,7 +183,7 @@ def test_build_brief_has_every_section(config):
     title, body = main.build_brief(ON_TIME, config, WEATHER, HEADLINES)
 
     assert title == "Daily Brief: Tue 13 Oct"
-    assert "Dublin: 4 to 10°C, feels like 7 to 14°C, rain 2.0 mm (60%), wind 34 km/h (gusts 34), UV 4" in body
+    assert "Dublin: daytime (7–19) 4 to 10°C, feels like 7 to 14°C, rain 2.0 mm (60%), wind 34 km/h (gusts 34), UV 4" in body
     assert body.startswith("Steady rain: wear waterproofs\nUV 3 or more: use sunscreen\n\n")
     assert "Me (out 7–10): sweater + thermal layer + waterproof warm coat + hat + gloves + sunscreen" in body
     assert "Wife (out 7–10): sweater + thermal layer + waterproof down coat + hat + gloves + scarf + sunscreen" in body
@@ -257,7 +257,7 @@ def test_run_survives_a_clothing_failure(config, sources):
 
     body = send.call_args.args[1]
     assert "## What to wear\nunavailable" in body
-    assert "Dublin: 4 to 10°C, feels like" in body
+    assert "Dublin: daytime (7–19) 4 to 10°C, feels like" in body
 
 
 def test_run_reports_delivery_failure_in_exit_code(config, sources):

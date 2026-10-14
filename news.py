@@ -43,6 +43,8 @@ URL_DATE = re.compile(r"/(20\d{2})-(\d{2})-(\d{2})/")
 HUPU_THREAD = re.compile(
     r'<a\s+href="([^"]+)"[^>]*class="p-title"[^>]*>(.*?)</a>', re.DOTALL
 )
+# "10-14 01:40" (month-day, Beijing time) or "01:40" (today).
+HUPU_TIME = re.compile(r'class="post-time"[^>]*>\s*(?:(\d{1,2})-(\d{1,2})\s+)?(\d{1,2}):(\d{2})\s*<')
 TITLE_WEIGHT = 2
 SUMMARY_WEIGHT = 1
 
@@ -60,7 +62,9 @@ def get_headlines(config) -> list[dict] | None:
 
     found = []
     for group in groups:
-        items = _read_feeds(group["feeds"], [next(pages) for _ in group["feeds"]], settings)
+        # A group may set its own max_age_hours, like max_per_source.
+        group_settings = {**settings, "max_age_hours": group.get("max_age_hours", settings["max_age_hours"])}
+        items = _read_feeds(group["feeds"], [next(pages) for _ in group["feeds"]], group_settings)
         shared = settings["keywords"] if group.get("use_global_keywords", True) else []
         picked = select(
             items,
@@ -179,13 +183,38 @@ def _read_rss(content, url):
 
 
 def _read_hupu(content, url):
-    """Threads on a bbs.hupu.com board, in the board's own (hot) order.
+    """Threads on a bbs.hupu.com board, in the board's own order.
 
-    Boards list the last 24 hours and show no machine-readable date, so the
-    items count as fresh.
+    Each row shows a Beijing time with no year ("10-14 01:40"). The 24-hour
+    ranking keeps busy threads from days before, so the time is what lets
+    `max_age_hours` drop them. A row without a readable time is undated.
     """
     page = content.decode("utf-8", errors="replace")
-    return [_item(title, urljoin(url, href)) for href, title in HUPU_THREAD.findall(page)]
+    threads = list(HUPU_THREAD.finditer(page))
+    items = []
+    for number, thread in enumerate(threads):
+        end = threads[number + 1].start() if number + 1 < len(threads) else len(page)
+        when = HUPU_TIME.search(page, thread.end(), end)
+        items.append(_item(thread.group(2), urljoin(url, thread.group(1)), published=_hupu_time(when)))
+    return items
+
+
+def _hupu_time(match):
+    """A board time as UTC, taking the year (and, for "HH:MM", the day) from now in Beijing."""
+    if not match:
+        return None
+    month, day, hour, minute = match.groups()
+    now = datetime.fromtimestamp(time.time(), CHINA)
+    try:
+        moment = now.replace(
+            month=int(month or now.month), day=int(day or now.day),
+            hour=int(hour), minute=int(minute), second=0, microsecond=0,
+        )
+    except ValueError:
+        return None
+    if moment > now + timedelta(days=1):  # a December thread read in January
+        moment = moment.replace(year=now.year - 1)
+    return _utc(moment)
 
 
 def _read_completecar(content, url):

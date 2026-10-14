@@ -31,7 +31,7 @@ brief:
     clothing: What to wear
     news: News
   unavailable: unavailable
-  weather_line: "{city}: {temp}, feels like {feels}, rain {rain_mm} mm ({rain}%), wind {wind} km/h (gusts {gust}), UV {uv}"
+  weather_line: "{city}: daytime ({day}) {temp}, feels like {feels}, rain {rain_mm} mm ({rain}%), wind {wind} km/h (gusts {gust}), UV {uv}"
   temp_range: "{low} to {high}°C"
   temp_single: "{low}°C"
   # {hours} and {notes} are filled from person_hours and person_notes, or left empty.
@@ -42,7 +42,7 @@ brief:
   lang: en
   footer: "Generated at {time} · {city}"
   weather_labels:
-    temp: Temperature
+    temp: "Daytime {day}"  # {day} is clothing.windows.day
     feels: Feels like
     rain: Rain
     wind: Wind

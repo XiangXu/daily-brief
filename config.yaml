@@ -29,7 +29,7 @@ brief:
     clothing: 👕 穿衣建议
     news: 📰 新闻
   unavailable: 暂无
-  weather_line: "{city}：气温 {temp}，体感 {feels}，降雨 {rain_mm} 毫米（概率 {rain}%），风速 {wind} 公里/小时（阵风 {gust}），紫外线指数 {uv}"
+  weather_line: "{city}：白天（{day} 点）气温 {temp}，体感 {feels}，降雨 {rain_mm} 毫米（概率 {rain}%），风速 {wind} 公里/小时（阵风 {gust}），紫外线指数 {uv}"
   temp_range: "{low}~{high}°C"
   temp_single: "{low}°C"
   # {hours} and {notes} are filled from person_hours and person_notes, or left empty.
@@ -40,7 +40,7 @@ brief:
   lang: zh
   footer: "生成于 {time} · {city}"
   weather_labels:
-    temp: 气温
+    temp: "白天 {day} 点"  # {day} is clothing.windows.day
     feels: 体感
     rain: 降雨
     wind: 风速
@@ -227,6 +227,9 @@ news:
       limit: 5
       use_global_keywords: false  # forum threads: keep each board's own hot order
       max_per_source: 3  # neither board fills the section
+      # The 24-hour ranking keeps busy threads for days. One brief a day, so only
+      # threads from the last 24 hours, or yesterday's would come back.
+      max_age_hours: 24
       feeds:
         - url: https://bbs.hupu.com/nba
           parser: hupu

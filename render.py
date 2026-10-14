@@ -122,7 +122,10 @@ def compose(now, config, forecast, headlines) -> Brief:
     values = weather_line = advice = None
     alerts = reminders = ()
     if forecast is not None:
-        values = weather_values(forecast, brief)
+        # The forecast summary covers the day window only: name its hours, or the
+        # range reads as the whole day's (which a phone shows, low at dawn).
+        start, end = config["clothing"]["windows"]["day"]
+        values = {**weather_values(forecast, brief), "day": f"{start}–{end}"}
         weather_line = brief["weather_line"].format(city=config["location"]["name"], **values)
         alerts = tuple(_guarded("alerts", clothing.alerts, forecast, config["clothing"]) or ())
         reminders = tuple(brief["alerts"][key] for key in alerts) or (brief["all_clear"],)
@@ -322,7 +325,7 @@ def _weather(brief, wording) -> str:
 
     labels = wording["weather_labels"]
     temperatures = [
-        ("🌡️", values["temp"], labels["temp"]),
+        ("🌡️", values["temp"], labels["temp"].format(day=values["day"])),
         ("🧥", values["feels"], labels["feels"]),
     ]
     conditions = [

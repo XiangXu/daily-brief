@@ -387,9 +387,85 @@ HUPU_PAGE = """
 HUPU_FEED = {"url": "https://bbs.hupu.com/nba", "parser": "hupu", "name": "虎扑 NBA"}
 
 
-def hupu_items(cfg, content=HUPU_PAGE, feed=HUPU_FEED):
-    with patch.object(news.requests, "get", return_value=feed_response(content)) as get:
+# 15:00 in Beijing, the time a 07:00 Dublin brief goes out in summer.
+HUPU_NOW = datetime(2026, 10, 14, 7, 0, tzinfo=timezone.utc)
+
+
+def hupu_items(cfg, content=HUPU_PAGE, feed=HUPU_FEED, now=HUPU_NOW):
+    with (
+        patch.object(news.requests, "get", return_value=feed_response(content)) as get,
+        patch.object(news.time, "time", return_value=now.timestamp()),
+    ):
         return news.fetch_feeds([feed], cfg["news"]), get
+
+
+def hupu_page(*threads):
+    """A board page with (thread id, title, post-time or None) rows."""
+    rows = "".join(
+        f'<li class="bbs-sl-web-post-body"><div class="bbs-sl-web-post-layout"><div class="post-title">'
+        f'<a href="/{tid}.html" class="p-title">{title}</a></div><div class="post-datum">1 / 2</div>'
+        + (f'<div class="post-time">{when}</div>' if when else "")
+        + "</div></li>"
+        for tid, title, when in threads
+    )
+    return f"<html><body><ul>{rows}</ul></body></html>".encode("utf-8")
+
+
+def test_hupu_threads_are_dated_by_their_beijing_post_time(cfg):
+    page = hupu_page((1, "dated", "10-14 01:40"), (2, "undated", None))
+    items, _ = hupu_items(cfg, content=page)
+    # 01:40 in Beijing is 17:40 UTC the day before.
+    assert calendar.timegm(items[0]["published"]) == datetime(2026, 10, 13, 17, 40, tzinfo=timezone.utc).timestamp()
+    assert items[1]["published"] is None
+
+
+def test_hupu_drops_threads_still_hot_from_days_ago(cfg):
+    # The 24-hour ranking keeps busy old threads, so the same ones would top it every morning.
+    cfg["news"]["max_age_hours"] = 30
+    page = hupu_page((1, "today", "10-14 08:09"), (2, "yesterday", "10-13 14:30"), (3, "two days", "10-12 23:29"))
+    items, _ = hupu_items(cfg, content=page)
+    assert [i["title"] for i in items] == ["today", "yesterday"]
+
+
+def test_hupu_time_without_a_date_is_today_in_beijing(cfg):
+    items, _ = hupu_items(cfg, content=hupu_page((1, "t", "09:30")))
+    assert calendar.timegm(items[0]["published"]) == datetime(2026, 10, 14, 1, 30, tzinfo=timezone.utc).timestamp()
+
+
+def test_hupu_december_thread_read_in_january_is_last_year(cfg):
+    now = datetime(2027, 1, 1, 2, 0, tzinfo=timezone.utc)
+    items, _ = hupu_items(cfg, content=hupu_page((1, "t", "12-31 23:00")), now=now)
+    assert calendar.timegm(items[0]["published"]) == datetime(2026, 12, 31, 15, 0, tzinfo=timezone.utc).timestamp()
+
+
+@pytest.mark.parametrize("when", ["刚刚", "13-45 10:00", "02-30 10:00", ""])
+def test_hupu_unreadable_time_counts_as_undated(cfg, when):
+    items, _ = hupu_items(cfg, content=hupu_page((1, "t", when or None)))
+    assert items[0]["published"] is None
+
+
+def test_a_group_can_set_its_own_age_limit(cfg):
+    now = datetime(2026, 10, 13, 7, 30, tzinfo=timezone.utc)
+    dated = (
+        f"<item><title>25h</title><pubDate>{format_datetime(now - timedelta(hours=25))}</pubDate></item>"
+    )
+    content = RSS.format(source="Feed", items=dated).encode()
+    cfg["news"]["max_age_hours"] = 30
+    cfg["news"]["groups"] = [
+        {"name": "Strict", "limit": 5, "max_age_hours": 24, "feeds": ["https://a.example/rss"]},
+        {"name": "Default", "limit": 5, "feeds": ["https://b.example/rss"]},
+    ]
+    with (
+        patch.object(news.requests, "get", side_effect=lambda *a, **k: feed_response(content)),
+        patch.object(news.time, "time", return_value=now.timestamp()),
+    ):
+        groups = news.get_headlines(cfg)
+    assert [g["name"] for g in groups] == ["Default"]
+
+
+def test_real_hupu_section_only_shows_threads_from_the_last_day(real_config):
+    hupu = next(g for g in real_config["news"]["groups"] if g["name"] == "🏀 虎扑")
+    assert hupu["max_age_hours"] <= 24  # one brief a day: a longer limit repeats yesterday's threads
 
 
 def test_hupu_board_threads_become_items(cfg):

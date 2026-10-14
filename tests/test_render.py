@@ -79,7 +79,7 @@ def test_html_shows_every_section(config):
     page = html_for(config)
     for heading in ("Weather", "What to wear", "News"):
         assert heading in page
-    for text in ("4 to 10°C", "Temperature", "7 to 14°C", "Feels like", "2.0 mm", "Rain 60%", "34 km/h", "Dublin"):
+    for text in ("4 to 10°C", "Daytime 7–19", "7 to 14°C", "Feels like", "2.0 mm", "Rain 60%", "34 km/h", "Dublin"):
         assert text in page
     for name in ("Me", "Wife", "Child"):
         assert f">{name}<" in page
@@ -154,7 +154,7 @@ def test_header_icon_follows_the_weather(config, forecast, icon):
 
 def test_html_has_a_preheader_and_dark_mode_styles(config):
     page = html_for(config)
-    assert "display:none" in page and "Dublin: 4 to 10°C, feels like 7 to 14°C" in page
+    assert "display:none" in page and "Dublin: daytime (7–19) 4 to 10°C, feels like 7 to 14°C" in page
     assert "prefers-color-scheme: dark" in page
 
 
@@ -263,7 +263,7 @@ def test_compose_holds_everything_both_versions_show(config):
 
     assert brief.title == "Daily Brief: Tue 13 Oct" and brief.city == "Dublin"
     assert brief.alerts == ("rain_steady", "uv")
-    assert brief.weather_line.startswith("Dublin: 4 to 10°C")
+    assert brief.weather_line.startswith("Dublin: daytime (7–19) 4 to 10°C")
     assert [o.person["name"] for o in brief.advice] == ["Me", "Wife", "Child"]
     child = brief.advice[2]
     assert child.hours == "out 8–9"
@@ -271,6 +271,14 @@ def test_compose_holds_everything_both_versions_show(config):
     assert "Warms up later: you can take a layer off" not in child.wear
     assert brief.reminders == ("Steady rain: wear waterproofs", "UV 3 or more: use sunscreen")
     assert brief.groups == HEADLINES
+
+
+def test_the_temperature_range_says_which_hours_it_covers(config):
+    config["clothing"]["windows"]["day"] = [8, 20]
+    brief = render.compose(NOW, config, WEATHER, HEADLINES)
+    assert brief.values["day"] == "8–20"
+    assert "daytime (8–20) 4 to 10°C" in render.text(brief, config)
+    assert ">Daytime 8–20<" in render.html(brief, config)
 
 
 def test_compose_gives_an_all_clear_reminder_on_a_quiet_day_only(config):
@@ -338,7 +346,7 @@ def test_a_broken_headline_blanks_only_the_news(config, caplog):
     broken = [{"name": "Group", "items": [{"source": "S"}]}]  # no title or link
     brief = render.compose(NOW, config, WEATHER, broken)
     plain, rich = render.text(brief, config), render.html(brief, config)
-    assert "## News\nunavailable" in plain and "Dublin: 4 to 10°C" in plain
+    assert "## News\nunavailable" in plain and "Dublin: daytime (7–19) 4 to 10°C" in plain
     assert rich.count(">unavailable<") == 1 and "waterproof warm coat" in rich
     assert "news failed" in caplog.text
 
