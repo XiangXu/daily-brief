@@ -1,8 +1,13 @@
 schedule:
   timezone: Europe/Dublin
-  send_time: "07:30"
-  # The run goes ahead if it starts within this many minutes after send_time.
-  # Must stay below 60 so only one of the two UTC cron entries fires.
+  # Local times. Days off are weekends and public holidays in `holidays`
+  # (a country code for the `holidays` package).
+  send_times:
+    weekday: "07:00"
+    day_off: "08:00"
+  holidays: IE
+  # The run goes ahead if it starts within this many minutes after the send time.
+  # Must stay below 60, the gap between the workflow's cron entries, so only one sends.
   window_minutes: 55
 
 location:

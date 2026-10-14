@@ -2,7 +2,7 @@
 
 > Good morning! Here's the weather, what to wear, and what happened while you slept. ☕
 
-Every morning at **07:30 Dublin time**, a one-page brief lands in your inbox (and/or WeCom) with:
+Every morning at **07:00 Dublin time** (08:00 on weekends and Irish bank holidays), a one-page brief lands in your inbox (and/or WeCom) with:
 
 - 🌦️ **Weather** for the day, from [Open-Meteo](https://open-meteo.com/). Free, no API key.
 - 🧥 **Clothing advice** for each family member, based on the hours they are actually outside. No more "why didn't you tell me it would rain at pickup?"
@@ -44,7 +44,7 @@ Then fill in `.env` 🔑:
 .venv/bin/pytest
 ```
 
-Without `--force`, the script only sends if it starts within `schedule.window_minutes` after `schedule.send_time`. Otherwise it exits quietly and goes back to sleep. 😴
+Without `--force`, the script only sends if it starts within `schedule.window_minutes` after the day's time in `schedule.send_times` (`weekday`, or `day_off` for weekends and bank holidays). Otherwise it exits quietly and goes back to sleep. 😴
 
 ## 🎛️ Configuration
 
@@ -84,7 +84,7 @@ The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no co
 
 1. 🔒 Keep the repository **private**: the config and the briefs contain family information.
 2. 🤫 Add the three variables above as repository secrets.
-3. 🕢 The workflow runs at 06:30 and 07:30 UTC. The script checks the time in `Europe/Dublin`, so exactly one of the two runs sends the brief, in summer and in winter, with no manual changes for daylight saving.
+3. 🕖 The workflow runs at 06:00, 07:00 and 08:00 UTC. The script checks the date and time in `Europe/Dublin`, so exactly one of the three runs sends the brief, on workdays and days off, in summer and in winter, with no manual changes for daylight saving.
 
 Can't wait until tomorrow? Trigger the workflow by hand: **Actions → Daily Brief → Run workflow** ▶️
 

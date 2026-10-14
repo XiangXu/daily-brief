@@ -1,10 +1,13 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+import holidays
 import pytest
+import yaml
 
 import main
+from conftest import ROOT
 from helpers import stormy_day
 
 UTC = ZoneInfo("UTC")
@@ -63,21 +66,100 @@ def test_run_html_out_writes_a_preview_file(config, sources, tmp_path):
 @pytest.mark.parametrize(
     "utc_time, expected",
     [
-        # Summer (IST, UTC+1): the 06:30 UTC entry is 07:30 in Dublin.
-        (datetime(2026, 7, 1, 6, 30, tzinfo=UTC), True),
-        (datetime(2026, 7, 1, 7, 30, tzinfo=UTC), False),
-        # Winter (GMT, UTC+0): the 07:30 UTC entry is 07:30 in Dublin.
-        (datetime(2026, 12, 1, 6, 30, tzinfo=UTC), False),
-        (datetime(2026, 12, 1, 7, 30, tzinfo=UTC), True),
+        # Weekday, summer (IST, UTC+1): 07:00 in Dublin is 06:00 UTC.
+        (datetime(2026, 7, 1, 6, 0, tzinfo=UTC), True),
+        (datetime(2026, 7, 1, 7, 0, tzinfo=UTC), False),
+        (datetime(2026, 7, 1, 8, 0, tzinfo=UTC), False),
+        # Weekday, winter (GMT, UTC+0): 07:00 in Dublin is 07:00 UTC.
+        (datetime(2026, 12, 1, 6, 0, tzinfo=UTC), False),
+        (datetime(2026, 12, 1, 7, 0, tzinfo=UTC), True),
+        (datetime(2026, 12, 1, 8, 0, tzinfo=UTC), False),
         # GitHub Actions often starts late: still inside the window.
-        (datetime(2026, 12, 1, 7, 50, tzinfo=UTC), True),
-        (datetime(2026, 12, 1, 8, 24, tzinfo=UTC), True),
-        (datetime(2026, 12, 1, 8, 25, tzinfo=UTC), False),
-        (datetime(2026, 12, 1, 7, 29, tzinfo=UTC), False),
+        (datetime(2026, 12, 1, 7, 54, tzinfo=UTC), True),
+        (datetime(2026, 12, 1, 7, 55, tzinfo=UTC), False),
+        (datetime(2026, 12, 1, 6, 59, tzinfo=UTC), False),
+        # Weekend, summer: 08:00 in Dublin is 07:00 UTC.
+        (datetime(2026, 7, 4, 6, 0, tzinfo=UTC), False),
+        (datetime(2026, 7, 4, 7, 0, tzinfo=UTC), True),
+        (datetime(2026, 7, 5, 8, 0, tzinfo=UTC), False),
+        # Weekend, winter: 08:00 in Dublin is 08:00 UTC.
+        (datetime(2026, 12, 5, 7, 0, tzinfo=UTC), False),
+        (datetime(2026, 12, 6, 8, 0, tzinfo=UTC), True),
+        (datetime(2026, 12, 6, 8, 54, tzinfo=UTC), True),
+        # Bank holidays are days off: St Patrick's Day (Tue) and the October bank holiday (Mon).
+        (datetime(2026, 3, 17, 7, 0, tzinfo=UTC), False),
+        (datetime(2026, 3, 17, 8, 0, tzinfo=UTC), True),
+        (datetime(2026, 10, 26, 7, 0, tzinfo=UTC), False),
+        (datetime(2026, 10, 26, 8, 0, tzinfo=UTC), True),
+        # The clocks change on Sundays at 01:00 UTC, before any send.
+        (datetime(2026, 3, 29, 7, 0, tzinfo=UTC), True),
+        (datetime(2026, 3, 29, 8, 0, tzinfo=UTC), False),
+        (datetime(2026, 10, 25, 7, 0, tzinfo=UTC), False),
+        (datetime(2026, 10, 25, 8, 0, tzinfo=UTC), True),
     ],
 )
 def test_should_run_only_around_send_time_in_dublin(config, utc_time, expected):
     assert main.should_run(utc_time, config["schedule"]) is expected
+
+
+def test_day_off_is_judged_by_the_dublin_date(config):
+    # 23:30 UTC on Friday is 00:30 on Saturday in Dublin: a day off.
+    schedule = dict(config["schedule"], send_times={"weekday": "00:15", "day_off": "00:30"})
+    assert main.should_run(datetime(2026, 7, 3, 23, 30, tzinfo=UTC), schedule) is True
+    assert main.should_run(datetime(2026, 7, 3, 23, 15, tzinfo=UTC), schedule) is False
+
+
+@pytest.mark.parametrize(
+    "day, expected",
+    [
+        (date(2026, 10, 14), False),  # Wednesday
+        (date(2026, 10, 17), True),  # Saturday
+        (date(2026, 10, 18), True),  # Sunday
+        (date(2026, 2, 2), True),  # St Brigid's Day
+        (date(2026, 3, 17), True),  # St Patrick's Day
+        (date(2026, 4, 6), True),  # Easter Monday
+        (date(2026, 10, 26), True),  # October bank holiday
+        (date(2026, 12, 25), True),  # Christmas Day
+        (date(2027, 3, 29), True),  # Easter Monday moves every year
+    ],
+)
+def test_weekends_and_irish_bank_holidays_are_days_off(config, day, expected):
+    assert main.is_day_off(day, config["schedule"]) is expected
+
+
+def _cron_times(day):
+    """The UTC times the workflow's cron entries fire on `day`."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "daily-brief.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))  # PyYAML reads the key `on` as True
+    times = []
+    for entry in triggers["schedule"]:
+        minute, hour, *rest = entry["cron"].split()
+        # Every entry fires daily: main.py picks the day's send time in Dublin.
+        assert rest == ["*", "*", "*"], entry["cron"]
+        times.append(datetime(day.year, day.month, day.day, int(hour), int(minute), tzinfo=UTC))
+    return times
+
+
+@pytest.mark.parametrize("delay_minutes", [0, 20, 54])
+def test_workflow_sends_exactly_once_a_day_at_the_dublin_send_time(real_config, delay_minutes):
+    schedule = real_config["schedule"]
+    days_off = holidays.Ireland(years=[2026, 2027])
+    day = date(2026, 1, 1)
+    while day.year < 2028:
+        starts = [t + timedelta(minutes=delay_minutes) for t in _cron_times(day)]
+        sent = [t.astimezone(DUBLIN) for t in starts if main.should_run(t, schedule)]
+        assert len(sent) == 1, (day, delay_minutes, sent)
+        kind = "day_off" if day.weekday() >= 5 or day in days_off else "weekday"
+        hour, minute = map(int, schedule["send_times"][kind].split(":"))
+        on_time = datetime(day.year, day.month, day.day, hour, minute, tzinfo=DUBLIN)
+        assert sent[0] == on_time + timedelta(minutes=delay_minutes)
+        day += timedelta(days=1)
+
+
+def test_real_send_times_are_seven_on_weekdays_and_eight_on_days_off(real_config):
+    schedule = real_config["schedule"]
+    assert schedule["send_times"] == {"weekday": "07:00", "day_off": "08:00"}
+    assert schedule["holidays"] == "IE"
 
 
 def test_build_brief_has_every_section(config):

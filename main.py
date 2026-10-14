@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import holidays
 import yaml
 from dotenv import load_dotenv
 
@@ -25,14 +26,20 @@ def load_config(path=CONFIG_PATH) -> dict:
         return yaml.safe_load(f)
 
 
-def should_run(now, schedule) -> bool:
-    """True if `now` falls in the send window, in the configured timezone.
+def is_day_off(day, schedule) -> bool:
+    """True on weekends and public holidays in the configured country."""
+    return day.weekday() >= 5 or day in holidays.country_holidays(schedule["holidays"], years=day.year)
 
-    The workflow has one UTC cron entry per DST offset, so only one of them
-    lands in the window on any given day.
+
+def should_run(now, schedule) -> bool:
+    """True if `now` falls in the day's send window, in the configured timezone.
+
+    Workdays and days off have their own send time. The workflow fires every
+    hour that a send time can map to in UTC, and only one lands in the window.
     """
     local = now.astimezone(ZoneInfo(schedule["timezone"]))
-    hour, minute = map(int, schedule["send_time"].split(":"))
+    kind = "day_off" if is_day_off(local.date(), schedule) else "weekday"
+    hour, minute = map(int, schedule["send_times"][kind].split(":"))
     start = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
     return start <= local < start + timedelta(minutes=schedule["window_minutes"])
 

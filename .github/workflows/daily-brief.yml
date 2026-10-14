@@ -2,10 +2,13 @@ name: Daily Brief
 
 on:
   schedule:
-    # Cron is UTC. One entry per DST offset: main.py only proceeds when it is
-    # 07:30 in Europe/Dublin, so exactly one of these sends the brief each day.
-    - cron: "30 6 * * *"
-    - cron: "30 7 * * *"
+    # Cron is UTC and Dublin is UTC+0 or UTC+1, so 07:00 (workdays) and
+    # 08:00 (weekends and bank holidays) in Dublin fall at 06:00, 07:00 or
+    # 08:00 UTC. main.py works out the day and time in Dublin and only one
+    # of these sends the brief each day.
+    - cron: "0 6 * * *"
+    - cron: "0 7 * * *"
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 permissions:
