@@ -87,12 +87,16 @@ def _env(variable) -> str:
 def _send_email(title, body, settings, html):
     user = _env("GMAIL_USER")
     password = _env("GMAIL_APP_PASSWORD")
+    # Comma-separated, kept out of config.yaml so addresses never reach the repo.
+    recipients = [a.strip() for a in _env("EMAIL_RECIPIENTS").split(",") if a.strip()]
+    if not recipients:
+        raise ChannelConfigError("EMAIL_RECIPIENTS has no addresses")
     email = settings["email"]
 
     message = EmailMessage()
     message["Subject"] = title
     message["From"] = user
-    message["To"] = ", ".join(email["recipients"])
+    message["To"] = ", ".join(recipients)
     message.set_content(body)
     if html:
         message.add_alternative(html, subtype="html")

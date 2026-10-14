@@ -273,6 +273,3 @@ notify:
   email:
     smtp_host: smtp.gmail.com
     smtp_port: 465
-    recipients:
-      # Testing: only me for now. Add the wife's address when ready.
-      - me@example.com

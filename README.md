@@ -26,6 +26,7 @@ Then fill in `.env` 🔑:
 |---|---|
 | `GMAIL_USER` | 📧 Gmail address the brief is sent from |
 | `GMAIL_APP_PASSWORD` | 🔐 A Gmail [app password](https://myaccount.google.com/apppasswords), not the account password |
+| `EMAIL_RECIPIENTS` | 📬 Comma-separated addresses that receive the brief |
 | `WECOM_WEBHOOK_URL` | 💬 WeCom group bot webhook (only if the `wecom` channel is enabled) |
 
 ## 🎮 Usage
@@ -58,7 +59,7 @@ Everything tunable lives in `config.yaml`. Nothing is hardcoded, so tweak away!
 | 👨‍👩‍👧 `people` | Each person's name, temperature offset and the hours they are outside |
 | 🧣 `clothing` | Time windows, temperature tiers, rain, wind and UV thresholds, and the advice text |
 | 🗞️ `news` | Ranking keywords, sections, feeds, slot counts and age limits |
-| 📮 `notify` | Delivery channels (`email`, `wecom`), retries and email recipients |
+| 📮 `notify` | Delivery channels (`email`, `wecom`), retries and the SMTP server |
 
 Feels the cold? 🥶 Give that person a negative `offset` in `people` and they get dressed as if it were a few degrees colder.
 
@@ -82,8 +83,8 @@ The brief is hard to break 💪. If a data source fails, the brief still goes ou
 
 The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no computer needs to stay on.
 
-1. 🔒 Keep the repository **private**: the config and the briefs contain family information.
-2. 🤫 Add the three variables above as repository secrets.
+1. 🔒 Keep personal data out of the repository: email addresses live in secrets, and names in `config.yaml` stay generic.
+2. 🤫 Add the variables above as repository secrets.
 3. 🕖 The workflow runs at 06:00, 07:00 and 08:00 UTC. The script checks the date and time in `Europe/Dublin`, so exactly one of the three runs sends the brief, on workdays and days off, in summer and in winter, with no manual changes for daylight saving.
 
 Can't wait until tomorrow? Trigger the workflow by hand: **Actions → Daily Brief → Run workflow** ▶️

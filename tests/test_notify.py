@@ -20,12 +20,12 @@ def env(monkeypatch):
     monkeypatch.setenv("GMAIL_USER", "me@gmail.com")
     monkeypatch.setenv("GMAIL_APP_PASSWORD", "app-password")
     monkeypatch.setenv("WECOM_WEBHOOK_URL", WEBHOOK)
+    monkeypatch.setenv("EMAIL_RECIPIENTS", "me@example.com, wife@example.com")
 
 
 @pytest.fixture
 def cfg(config):
     config["notify"]["channels"] = ["email"]
-    config["notify"]["email"]["recipients"] = ["me@example.com", "wife@example.com"]
     return config
 
 
@@ -58,6 +58,31 @@ def test_email_is_sent_to_all_recipients(cfg, smtp):
     assert message["From"] == "me@gmail.com"
     assert message["To"] == "me@example.com, wife@example.com"
     assert message.get_content().strip() == "Body"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("me@example.com", "me@example.com"),
+        (" me@example.com ,wife@example.com, ", "me@example.com, wife@example.com"),
+    ],
+)
+def test_email_recipients_come_from_the_environment(cfg, smtp, monkeypatch, value, expected):
+    _, server = smtp
+    monkeypatch.setenv("EMAIL_RECIPIENTS", value)
+    notify.send("Title", "Body", cfg)
+    assert server.send_message.call_args.args[0]["To"] == expected
+
+
+@pytest.mark.parametrize("value", ["", " , "])
+def test_blank_email_recipients_fail_without_retrying(cfg, smtp, monkeypatch, no_sleep, caplog, value):
+    _, server = smtp
+    monkeypatch.setenv("EMAIL_RECIPIENTS", value)
+
+    assert notify.send("Title", "Body", cfg) == {"email": False}
+    server.send_message.assert_not_called()
+    no_sleep.assert_not_called()
+    assert "EMAIL_RECIPIENTS" in caplog.text
 
 
 def test_email_with_html_is_multipart_alternative(cfg, smtp):
@@ -163,6 +188,7 @@ def test_wecom_failures_are_retried_and_never_log_the_webhook(cfg, outcome, capl
     [
         ("email", "GMAIL_USER"),
         ("email", "GMAIL_APP_PASSWORD"),
+        ("email", "EMAIL_RECIPIENTS"),
         ("wecom", "WECOM_WEBHOOK_URL"),
     ],
 )

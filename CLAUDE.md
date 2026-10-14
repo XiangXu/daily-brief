@@ -21,7 +21,7 @@ Daily Brief generates a one-page morning brief: weather, clothing advice and IT/
 - Keep thresholds and offsets in `config.yaml`, not hardcoded.
 - Secrets live in `.env` locally and in GitHub Secrets in CI. Never commit secrets.
 - Do not commit generated briefs back to the repo, because they contain family info. Deliver them only via email or WeCom.
-- The GitHub repository must be Private.
+- The repository is public. Never commit personal data: no email addresses, real names or details that identify the family. Recipients come from the `EMAIL_RECIPIENTS` secret, and names in `config.yaml` stay generic.
 
 ## Stack
 
@@ -45,7 +45,7 @@ Daily Brief generates a one-page morning brief: weather, clothing advice and IT/
   - Channels are functions `(title, body, settings, html)` registered with `@channel("name")`. To add one, write the function and list its name in the config. `body` is plain text and `html` is the rich version or None.
   - Email sends both as multipart/alternative. WeCom uses the text as markdown.
   - Preview the email without sending: `.venv/bin/python main.py --force --dry-run --html-out brief.html` (`*.html` previews are git-ignored).
-  - Email uses `smtplib` with a Gmail app password and a recipient list from config (me and wife).
+  - Email uses `smtplib` with a Gmail app password and a comma-separated recipient list from the `EMAIL_RECIPIENTS` environment variable (me and wife), never from config.
   - WeCom sends a webhook POST with a markdown message.
   - Retry twice on failure, then log the error. A delivery failure must not block brief generation.
   - Tests use mocks and never send real messages.
@@ -98,5 +98,5 @@ The thresholds are judgement calls for Dublin's mild, wet, windy climate. Tune t
 
 The brief runs on GitHub Actions, on a schedule plus `workflow_dispatch`. The workflow file is `.github/workflows/daily-brief.yml`.
 
-- Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `WECOM_WEBHOOK_URL`.
+- Secrets: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_RECIPIENTS` and `WECOM_WEBHOOK_URL`.
 - The brief goes out at 07:00 Dublin time on workdays and 08:00 on days off (weekends and Irish bank holidays, from the `holidays` package): `schedule.send_times` and `schedule.holidays`. Cron runs in UTC, so the workflow fires daily at 06:00, 07:00 and 08:00 UTC, with no day-of-week filters. The script uses `zoneinfo` to find the date and time in `Europe/Dublin`, picks that day's send time, and exits immediately unless it is within `schedule.window_minutes` after it. This handles DST without manual edits, and the window absorbs late starts by GitHub Actions. The window must stay below the 60-minute gap between cron entries, so only one run sends; `tests/test_main.py` simulates every cron entry for two years to check this. A manual `workflow_dispatch` run passes `--force`.
