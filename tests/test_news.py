@@ -509,7 +509,10 @@ def test_unknown_parser_is_skipped_and_logged(cfg, caplog):
 
 def test_plain_urls_and_html_feeds_can_be_mixed(cfg):
     responses = [feed_response(rss("Feed A", ["A1"])), feed_response(HUPU_PAGE)]
-    with patch.object(news.requests, "get", side_effect=responses):
+    with (
+        patch.object(news.requests, "get", side_effect=responses),
+        patch.object(news.time, "time", return_value=HUPU_NOW.timestamp()),
+    ):
         items = news.fetch_feeds(["https://a.example/rss", HUPU_FEED], cfg["news"])
     assert [i["title"] for i in items][:2] == ["A1", "拆解开拓者给杨瀚森设定的3个针对性战术布置"]
 

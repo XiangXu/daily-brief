@@ -34,8 +34,9 @@ def is_day_off(day, schedule) -> bool:
 def should_run(now, schedule) -> bool:
     """True if `now` falls in the day's send window, in the configured timezone.
 
-    Workdays and days off have their own send time. The workflow fires every
-    hour that a send time can map to in UTC, and only one lands in the window.
+    Workdays and days off have their own send time. The workflow fires shortly
+    after every UTC time a send time can map to, and again half an hour later;
+    its "sent today" marker stops the runs after the first one that sends.
     """
     local = now.astimezone(ZoneInfo(schedule["timezone"]))
     kind = "day_off" if is_day_off(local.date(), schedule) else "weekday"
@@ -50,8 +51,12 @@ def build_brief(now, config, forecast, headlines) -> tuple[str, str]:
     return brief.title, render.text(brief, config)
 
 
-def run(config, now, force=False, dry_run=False, html_out=None) -> int:
-    """Run once and return the process exit code."""
+def run(config, now, force=False, dry_run=False, html_out=None, sent_file=None) -> int:
+    """Run once and return the process exit code.
+
+    After a successful delivery, `sent_file` (if given) gets the local date, so
+    the workflow can skip its later runs that day.
+    """
     if not force and not should_run(now, config["schedule"]):
         log.info("Outside the send window, nothing to do")
         return 0
@@ -71,7 +76,12 @@ def run(config, now, force=False, dry_run=False, html_out=None) -> int:
         return 0
 
     results = notify.send(title, body, config, html=html)
-    return 0 if results and all(results.values()) else 1
+    if not (results and all(results.values())):
+        return 1
+    if sent_file:
+        local = now.astimezone(ZoneInfo(config["schedule"]["timezone"]))
+        Path(sent_file).write_text(local.date().isoformat(), encoding="utf-8")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -85,6 +95,9 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--html-out", metavar="FILE", help="also write the HTML email to FILE, to preview it"
     )
+    parser.add_argument(
+        "--sent-file", metavar="FILE", help="after a successful send, write the local date to FILE"
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -93,7 +106,12 @@ def main(argv=None) -> int:
 
     now = datetime.now(ZoneInfo(config["schedule"]["timezone"]))
     return run(
-        config, now, force=args.force, dry_run=args.dry_run, html_out=args.html_out
+        config,
+        now,
+        force=args.force,
+        dry_run=args.dry_run,
+        html_out=args.html_out,
+        sent_file=args.sent_file,
     )
 
 

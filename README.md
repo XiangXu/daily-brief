@@ -2,7 +2,7 @@
 
 > Good morning! Here's the weather, what to wear, and what happened while you slept. ☕
 
-Every morning at **07:00 Dublin time** (08:00 on weekends and Irish bank holidays), a one-page brief lands in your inbox (and/or WeCom) with:
+Every morning at **06:30 Dublin time** (08:00 on weekends and Irish bank holidays), a one-page brief lands in your inbox (and/or WeCom) with:
 
 - 🌦️ **Weather** for the day, from [Open-Meteo](https://open-meteo.com/). Free, no API key.
 - 🧥 **Clothing advice** for each family member, based on the hours they are actually outside. No more "why didn't you tell me it would rain at pickup?"
@@ -85,7 +85,7 @@ The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no co
 
 1. 🔒 Keep personal data out of the repository: email addresses live in secrets, and names in `config.yaml` stay generic.
 2. 🤫 Add the variables above as repository secrets.
-3. 🕖 The workflow runs at 06:07, 07:07 and 08:07 UTC (off the hour, when GitHub is less busy). The script checks the date and time in `Europe/Dublin`, so exactly one of the three runs sends the brief, on workdays and days off, in summer and in winter, with no manual changes for daylight saving.
+3. 🕖 The workflow runs every 30 minutes from 05:37 to 08:37 UTC: just after each possible send time and again half an hour later in case GitHub drops a run, and off the hour, when GitHub is less busy. The script checks the date and time in `Europe/Dublin`, so only runs within 90 minutes of that day's send time go ahead, on workdays and days off, in summer and in winter, with no manual changes for daylight saving. The first one to send leaves a `brief-sent-<date>` marker in the Actions cache, and the rest that day see it and skip 🛑, so you get one brief.
 
 GitHub pauses scheduled workflows in public repos after 60 days without activity, so each run re-enables its own workflow to keep the schedule going 🔁.
 

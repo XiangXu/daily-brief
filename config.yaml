@@ -3,12 +3,14 @@ schedule:
   # Local times. Days off are weekends and public holidays in `holidays`
   # (a country code for the `holidays` package).
   send_times:
-    weekday: "07:00"
+    weekday: "06:30"
     day_off: "08:00"
   holidays: IE
   # The run goes ahead if it starts within this many minutes after the send time.
-  # Must stay below 60, the gap between the workflow's cron entries, so only one sends.
-  window_minutes: 55
+  # Wide enough for a late GitHub start or the retry 30 minutes later; the
+  # workflow's "sent today" marker stops a second send. Keep it short enough
+  # that a run hours late doesn't send a morning brief at lunchtime.
+  window_minutes: 90
 
 location:
   name: 都柏林

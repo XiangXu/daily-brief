@@ -149,33 +149,85 @@ def _cron_times(day):
     return times
 
 
-def test_crons_avoid_the_busy_top_of_the_hour(real_config):
-    # GitHub delays or drops many runs scheduled at :00. A start more than
-    # window_minutes late would skip the day without any failed run.
-    minutes = {t.minute for t in _cron_times(date(2026, 1, 1))}
-    assert len(minutes) == 1 and 0 < minutes.pop() < real_config["schedule"]["window_minutes"]
+CRON_LAG = timedelta(minutes=7)  # the first cron entry after a send time
+RETRY_GAP = timedelta(minutes=30)  # the next entry, in case GitHub drops the first
 
 
-@pytest.mark.parametrize("delay_minutes", [0, 20, 47])
-def test_workflow_sends_exactly_once_a_day_at_the_dublin_send_time(real_config, delay_minutes):
+def _utc_send_times(schedule):
+    """Every UTC time a send time can fall at, in winter (UTC+0) and summer (UTC+1)."""
+    times = set()
+    for send in schedule["send_times"].values():
+        hour, minute = map(int, send.split(":"))
+        for offset in (0, 1):
+            times.add(datetime(2026, 1, 1, hour - offset, minute, tzinfo=UTC))
+    return times
+
+
+def test_crons_fire_twice_after_each_send_time_and_off_the_hour(real_config):
+    # GitHub delays or drops many runs scheduled at :00, and sometimes drops a
+    # run outright, so each send time has a second entry half an hour later.
     schedule = real_config["schedule"]
-    days_off = holidays.Ireland(years=[2026, 2027])
+    crons = set(_cron_times(date(2026, 1, 1)))
+    assert all(t.minute != 0 for t in crons)
+    for send in _utc_send_times(schedule):
+        assert {send + CRON_LAG, send + CRON_LAG + RETRY_GAP} <= crons, send
+    assert CRON_LAG + RETRY_GAP < timedelta(minutes=schedule["window_minutes"])
+
+
+def _sends(day, schedule, delay=timedelta(0), dropped=()):
+    """The Dublin times the workflow sends on `day`.
+
+    Runs start `delay` late, `dropped` runs never start, and after a send the
+    workflow's "sent today" cache entry makes the later runs skip.
+    """
+    sent = []
+    for cron in sorted(_cron_times(day)):
+        start = cron + delay
+        if cron not in dropped and not sent and main.should_run(start, schedule):
+            sent.append(start.astimezone(DUBLIN))
+    return sent
+
+
+def _on_time(day, schedule):
+    days_off = holidays.Ireland(years=day.year)
+    kind = "day_off" if day.weekday() >= 5 or day in days_off else "weekday"
+    hour, minute = map(int, schedule["send_times"][kind].split(":"))
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=DUBLIN)
+
+
+def _every_day():
     day = date(2026, 1, 1)
     while day.year < 2028:
-        starts = [t + timedelta(minutes=delay_minutes) for t in _cron_times(day)]
-        sent = [t.astimezone(DUBLIN) for t in starts if main.should_run(t, schedule)]
-        assert len(sent) == 1, (day, delay_minutes, sent)
-        kind = "day_off" if day.weekday() >= 5 or day in days_off else "weekday"
-        hour, minute = map(int, schedule["send_times"][kind].split(":"))
-        on_time = datetime(day.year, day.month, day.day, hour, minute, tzinfo=DUBLIN)
-        cron_minute = _cron_times(day)[0].minute
-        assert sent[0] == on_time + timedelta(minutes=cron_minute + delay_minutes)
+        yield day
         day += timedelta(days=1)
 
 
-def test_real_send_times_are_seven_on_weekdays_and_eight_on_days_off(real_config):
+@pytest.mark.parametrize("delay_minutes", [0, 30, 75])
+def test_workflow_sends_exactly_once_a_day_at_the_dublin_send_time(real_config, delay_minutes):
     schedule = real_config["schedule"]
-    assert schedule["send_times"] == {"weekday": "07:00", "day_off": "08:00"}
+    delay = timedelta(minutes=delay_minutes)
+    for day in _every_day():
+        sent = _sends(day, schedule, delay)
+        on_time = _on_time(day, schedule)
+        # An earlier entry, started late, may land in the window first: fine.
+        assert len(sent) == 1 and on_time <= sent[0] <= on_time + CRON_LAG + delay, (day, sent)
+
+
+def test_workflow_still_sends_once_if_github_drops_the_first_run(real_config):
+    schedule = real_config["schedule"]
+    for day in _every_day():
+        first = _on_time(day, schedule) + CRON_LAG
+        assert _sends(day, schedule, dropped={first}) == [first + RETRY_GAP], day
+
+
+def test_a_run_hours_late_sends_nothing(real_config):
+    # 2026-10-14: GitHub started the morning's run at 13:36 UTC.
+    assert main.should_run(datetime(2026, 10, 14, 13, 36, tzinfo=UTC), real_config["schedule"]) is False
+
+
+def test_real_send_times_are_half_six_on_weekdays_and_eight_on_days_off(real_config):
+    schedule = real_config["schedule"]
+    assert schedule["send_times"] == {"weekday": "06:30", "day_off": "08:00"}
     assert schedule["holidays"] == "IE"
 
 
@@ -276,14 +328,52 @@ def test_run_dry_run_prints_instead_of_sending(config, sources, capsys):
     assert "Daily Brief: Tue 13 Oct" in out and "Story one" in out
 
 
+def test_run_sent_file_records_the_dublin_date_after_a_send(config, sources, tmp_path):
+    sent = tmp_path / "sent"
+    # 23:30 UTC on the 12th is already the 13th in Dublin (summer time).
+    assert main.run(config, datetime(2026, 10, 12, 23, 30, tzinfo=UTC), force=True, sent_file=sent) == 0
+
+    assert sent.read_text(encoding="utf-8") == "2026-10-13"
+
+
+def test_run_sent_file_is_not_written_outside_the_window(config, sources, tmp_path):
+    sent = tmp_path / "sent"
+    late = datetime(2026, 10, 13, 8, 30, tzinfo=DUBLIN)
+
+    assert main.run(config, late, sent_file=sent) == 0
+    assert not sent.exists()
+
+
+def test_run_sent_file_is_not_written_when_delivery_fails(config, sources, tmp_path):
+    # No marker, so the next run that morning tries again.
+    _, _, send = sources
+    send.return_value = {"email": False}
+    sent = tmp_path / "sent"
+
+    assert main.run(config, ON_TIME, sent_file=sent) == 1
+    assert not sent.exists()
+
+
+def test_run_sent_file_is_not_written_on_a_dry_run(config, sources, tmp_path):
+    sent = tmp_path / "sent"
+
+    assert main.run(config, ON_TIME, dry_run=True, sent_file=sent) == 0
+    assert not sent.exists()
+
+
 def test_main_parses_flags_and_loads_config(sources):
     with patch.object(main, "run", return_value=0) as run:
-        assert main.main(["--force", "--dry-run"]) == 0
+        assert main.main(["--force", "--dry-run", "--sent-file", "out.txt"]) == 0
 
     config, now = run.call_args.args
     assert config["schedule"]["timezone"] == "Europe/Dublin"
     assert now.tzinfo == ZoneInfo("Europe/Dublin")
-    assert run.call_args.kwargs == {"force": True, "dry_run": True, "html_out": None}
+    assert run.call_args.kwargs == {
+        "force": True,
+        "dry_run": True,
+        "html_out": None,
+        "sent_file": "out.txt",
+    }
 
 
 def test_build_brief_uses_labels_from_config(config):
