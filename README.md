@@ -87,17 +87,39 @@ The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no co
 2. 🤫 Add the variables above as repository secrets.
 3. 🕖 The workflow runs every 30 minutes from 05:37 to 08:37 UTC: just after each possible send time and again half an hour later in case GitHub drops a run, and off the hour, when GitHub is less busy. The script checks the date and time in `Europe/Dublin`, so only runs within 90 minutes of that day's send time go ahead, on workdays and days off, in summer and in winter, with no manual changes for daylight saving. The first one to send leaves a `brief-sent-<date>` marker in the Actions cache, and the rest that day see it and skip 🛑, so you get one brief.
 
-4. ⏱️ GitHub's own schedule is best effort: it often starts runs late, and sometimes not at all. For a brief you can count on, have an outside scheduler such as [cron-job.org](https://cron-job.org) start the workflow at the same UTC times. Create a fine-grained token for this repository only, with **Actions: read and write**, and have the scheduler send:
+4. ⏱️ Add an outside trigger (strongly recommended). GitHub's own schedule is best effort: it often starts runs late, and sometimes not at all. On 2026-10-15 it started none of the morning's runs, and the brief only went out when started by hand. So a free scheduler, [cron-job.org](https://cron-job.org), also asks GitHub to start the workflow. The brief still runs on GitHub Actions; cron-job.org only presses "start".
+
+   **a. A GitHub token** for cron-job.org to call GitHub with: **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token** ([direct link](https://github.com/settings/personal-access-tokens/new)).
+   - Repository access: **Only select repositories** → this repository. (The default, "Public repositories", is read-only, so the permission below never offers write access.)
+   - Permissions: **+ Add permissions → Actions**, then switch its access to **Read and write**.
+   - Note the expiry date: when the token expires the trigger stops, and you need a new token in both jobs.
+
+   **b. Two jobs on cron-job.org**, both in the UTC time zone, each sending the same request:
 
    ```
    POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/daily-brief.yml/dispatches
    Authorization: Bearer <token>
    Accept: application/vnd.github+json
+   Content-Type: application/json
 
    {"ref": "main", "inputs": {"scheduled": "true"}}
    ```
 
-   With `scheduled` on, the run checks the send window and the marker just like a scheduled one, so whichever trigger arrives first sends and the rest skip.
+   | Job | Days | Times (UTC) | Why |
+   |---|---|---|---|
+   | 💼 Workdays (06:30 Dublin) | Mon–Fri | :07 and :37 past 05, 06 and 07 | 06:30 Dublin is 05:30 UTC in summer and 06:30 in winter |
+   | 🛋️ Weekends and bank holidays (08:00 Dublin) | every day | :07 and :37 past 07 and 08 | 08:00 Dublin is 07:00 UTC in summer and 08:00 in winter. Every day, because cron-job.org does not know Irish bank holidays |
+
+   Turn on cron-job.org's failure notification, so an expired or revoked token emails you instead of failing quietly. A successful call gets `204` back from GitHub.
+
+   **Why this never sends two briefs.** A dispatch with `scheduled: true` behaves exactly like a scheduled run, and a manual **Run workflow** leaves it off and sends straight away. Every scheduled-style run:
+   - waits for any other run to finish first (the workflow's `concurrency` group), so two runs never check at the same moment;
+   - skips if today's `brief-sent-<date>` marker is in the Actions cache;
+   - otherwise sends only inside the send window, and saves the marker only if every channel delivered.
+
+   So the first run in the window sends, and every later one that day, from cron-job.org or GitHub, skips. Extra runs outside the window just log "Outside the send window" and stop. GitHub's own schedule stays on as a backup in case cron-job.org is down or the token has expired.
+
+   The token lives only in cron-job.org: it is not a repository secret and the workflow never reads it.
 
 GitHub pauses scheduled workflows in public repos after 60 days without activity, so each run re-enables its own workflow to keep the schedule going 🔁.
 
