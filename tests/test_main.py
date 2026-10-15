@@ -220,6 +220,28 @@ def test_workflow_still_sends_once_if_github_drops_the_first_run(real_config):
         assert _sends(day, schedule, dropped={first}) == [first + RETRY_GAP], day
 
 
+def _workflow():
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "daily-brief.yml").read_text())
+    return workflow.get("on", workflow.get(True)), workflow["jobs"]["brief"]
+
+
+def test_an_external_trigger_runs_like_a_scheduled_run():
+    # 2026-10-15: GitHub started none of the morning's scheduled runs, so an
+    # outside scheduler dispatches the workflow with `scheduled: true`. That run
+    # must honour the send window and the marker, not send with --force.
+    triggers, job = _workflow()
+    scheduled = triggers["workflow_dispatch"]["inputs"]["scheduled"]
+    assert scheduled["type"] == "boolean" and scheduled["default"] is False
+    assert job["env"]["SCHEDULED"] == "${{ github.event_name == 'schedule' || inputs.scheduled }}"
+    steps = {step.get("name"): step for step in job["steps"]}
+    assert "env.SCHEDULED == 'true'" in steps["Check whether today's brief has gone out"]["if"]
+    assert "env.SCHEDULED == 'true'" in steps["Send the brief"]["run"]
+    assert "env.SCHEDULED == 'true'" in steps["Remember that today's brief has gone out"]["if"]
+    assert "env.SCHEDULED == 'true'" in steps["Keep the schedule alive"]["if"]
+    # Only SCHEDULED itself looks at the event, so no step treats the two triggers differently.
+    assert "github.event_name" not in yaml.safe_dump(job["steps"])
+
+
 def test_a_run_hours_late_sends_nothing(real_config):
     # 2026-10-14: GitHub started the morning's run at 13:36 UTC.
     assert main.should_run(datetime(2026, 10, 14, 13, 36, tzinfo=UTC), real_config["schedule"]) is False

@@ -15,7 +15,16 @@ on:
     - cron: "37 7 * * *"
     - cron: "7 8 * * *"
     - cron: "37 8 * * *"
+  # GitHub starts scheduled runs late or not at all (on 2026-10-15 it started
+  # none), so an outside scheduler also dispatches this workflow at the cron
+  # times with `scheduled: true`. Such a run behaves exactly like a scheduled
+  # one. A manual run leaves it off and sends straight away.
   workflow_dispatch:
+    inputs:
+      scheduled:
+        description: Behave like a scheduled run (send window and "sent today" marker)
+        type: boolean
+        default: false
 
 # Runs queue rather than overlap, so a run always sees the marker left by the
 # one before it.
@@ -31,6 +40,9 @@ jobs:
   brief:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # "true" for a cron run or an outside scheduler's dispatch, "false" for a manual run.
+      SCHEDULED: ${{ github.event_name == 'schedule' || inputs.scheduled }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,7 +55,7 @@ jobs:
         run: echo "date=$(TZ=Europe/Dublin date +%F)" >> "$GITHUB_OUTPUT"
       - name: Check whether today's brief has gone out
         # The run that sends leaves a cache entry, so later runs that day skip.
-        if: github.event_name == 'schedule'
+        if: env.SCHEDULED == 'true'
         id: sent
         uses: actions/cache/restore@v4
         with:
@@ -53,14 +65,14 @@ jobs:
       - name: Send the brief
         if: steps.sent.outputs.cache-hit != 'true'
         # A manual run sends straight away, whatever the time, and leaves no marker.
-        run: python main.py ${{ github.event_name == 'workflow_dispatch' && '--force' || '--sent-file .sent' }}
+        run: python main.py ${{ env.SCHEDULED == 'true' && '--sent-file .sent' || '--force' }}
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
       - name: Remember that today's brief has gone out
-        if: github.event_name == 'schedule' && hashFiles('.sent') != ''
+        if: env.SCHEDULED == 'true' && hashFiles('.sent') != ''
         uses: actions/cache/save@v4
         with:
           path: .sent
@@ -68,7 +80,7 @@ jobs:
       - name: Keep the schedule alive
         # GitHub pauses schedules in public repos after 60 days without activity.
         # Re-enabling the workflow through the API restarts that clock.
-        if: always() && github.event_name == 'schedule'
+        if: always() && env.SCHEDULED == 'true'
         continue-on-error: true
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/daily-brief.yml/enable"
         env:

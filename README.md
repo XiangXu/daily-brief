@@ -87,6 +87,18 @@ The brief runs on GitHub Actions (`.github/workflows/daily-brief.yml`), so no co
 2. 🤫 Add the variables above as repository secrets.
 3. 🕖 The workflow runs every 30 minutes from 05:37 to 08:37 UTC: just after each possible send time and again half an hour later in case GitHub drops a run, and off the hour, when GitHub is less busy. The script checks the date and time in `Europe/Dublin`, so only runs within 90 minutes of that day's send time go ahead, on workdays and days off, in summer and in winter, with no manual changes for daylight saving. The first one to send leaves a `brief-sent-<date>` marker in the Actions cache, and the rest that day see it and skip 🛑, so you get one brief.
 
+4. ⏱️ GitHub's own schedule is best effort: it often starts runs late, and sometimes not at all. For a brief you can count on, have an outside scheduler such as [cron-job.org](https://cron-job.org) start the workflow at the same UTC times. Create a fine-grained token for this repository only, with **Actions: read and write**, and have the scheduler send:
+
+   ```
+   POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/daily-brief.yml/dispatches
+   Authorization: Bearer <token>
+   Accept: application/vnd.github+json
+
+   {"ref": "main", "inputs": {"scheduled": "true"}}
+   ```
+
+   With `scheduled` on, the run checks the send window and the marker just like a scheduled one, so whichever trigger arrives first sends and the rest skip.
+
 GitHub pauses scheduled workflows in public repos after 60 days without activity, so each run re-enables its own workflow to keep the schedule going 🔁.
 
 Can't wait until tomorrow? Trigger the workflow by hand: **Actions → Daily Brief → Run workflow** ▶️
