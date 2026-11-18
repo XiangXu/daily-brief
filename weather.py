@@ -2,6 +2,7 @@
 
 import logging
 import math
+import time
 from dataclasses import dataclass
 
 import requests
@@ -70,9 +71,7 @@ def fetch(config) -> Weather | None:
         "forecast_days": 1,
     }
     try:
-        resp = requests.get(API_URL, params=params, timeout=settings["timeout_seconds"])
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get(params, settings)
         daily = data.get("daily") or {}
         return summarise(
             _hours(data["hourly"]),
@@ -83,6 +82,23 @@ def fetch(config) -> Weather | None:
     except (requests.RequestException, KeyError, TypeError, ValueError, IndexError) as exc:
         log.error("Weather unavailable: %s: %s", type(exc).__name__, exc)
         return None
+
+
+def _get(params, settings):
+    """Download the forecast, retrying network and server errors as configured."""
+    attempts = 1 + settings["retries"]
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(API_URL, params=params, timeout=settings["timeout_seconds"])
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            # A 4xx means the request itself is wrong: asking again cannot help.
+            status = exc.response.status_code if exc.response is not None else None
+            if attempt == attempts or (status is not None and status < 500):
+                raise
+            log.warning("Weather fetch failed (%s), retrying", type(exc).__name__)
+            time.sleep(settings["retry_delay_seconds"])
 
 
 def summarise(hours, sunrise, sunset, day_start, day_end) -> Weather:

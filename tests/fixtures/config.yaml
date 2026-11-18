@@ -20,6 +20,9 @@ location:
 weather:
   # The hours summarised in the brief are clothing.windows.day.
   timeout_seconds: 10
+  # Extra attempts after a network or server error (not after a bad reply).
+  retries: 2
+  retry_delay_seconds: 5
 
 brief:
   # Everything the brief writes itself. Placeholders in {braces} are filled in.

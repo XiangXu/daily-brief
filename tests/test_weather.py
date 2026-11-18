@@ -9,6 +9,12 @@ from weather import Hour, fetch
 DATE = "2026-10-13"
 
 
+@pytest.fixture(autouse=True)
+def no_sleep():
+    with patch.object(weather.time, "sleep") as sleep:
+        yield sleep
+
+
 def payload():
     hours = [f"{DATE}T{h:02d}:00" for h in range(24)]
     apparent = [float(h) for h in range(24)]  # 07:00 -> 7.0 is the daytime minimum
@@ -44,7 +50,7 @@ def response(data, status=200):
     resp = Mock(status_code=status)
     resp.json.return_value = data
     if status >= 400:
-        resp.raise_for_status.side_effect = requests.HTTPError(f"{status}")
+        resp.raise_for_status.side_effect = requests.HTTPError(f"{status}", response=resp)
     return resp
 
 
@@ -139,6 +145,47 @@ def test_fetch_returns_none_on_network_error(config, failure):
 def test_fetch_returns_none_on_http_error(config):
     with patch.object(weather.requests, "get", return_value=response({}, status=500)):
         assert fetch(config) is None
+
+
+@pytest.mark.parametrize("failure", [requests.ConnectionError("down"), requests.Timeout("slow")])
+def test_a_network_error_is_retried(config, no_sleep, failure):
+    good = response(payload())
+    with patch.object(weather.requests, "get", side_effect=[failure, good]) as get:
+        result = fetch(config)
+
+    assert result is not None and len(result.hours) == 24
+    assert get.call_count == 2
+    no_sleep.assert_called_once_with(config["weather"]["retry_delay_seconds"])
+
+
+def test_a_server_error_is_retried(config):
+    replies = [response({}, status=503), response(payload())]
+    with patch.object(weather.requests, "get", side_effect=replies) as get:
+        assert fetch(config) is not None
+    assert get.call_count == 2
+
+
+def test_gives_up_after_the_configured_retries(config, no_sleep, caplog):
+    with patch.object(weather.requests, "get", side_effect=requests.Timeout("slow")) as get:
+        assert fetch(config) is None
+
+    assert get.call_count == 1 + config["weather"]["retries"]
+    assert no_sleep.call_count == config["weather"]["retries"]
+    assert "Weather unavailable" in caplog.text
+
+
+def test_a_client_error_is_not_retried(config, no_sleep):
+    with patch.object(weather.requests, "get", return_value=response({}, status=400)) as get:
+        assert fetch(config) is None
+    assert get.call_count == 1
+    no_sleep.assert_not_called()
+
+
+def test_a_malformed_payload_is_not_retried(config, no_sleep):
+    with patch.object(weather.requests, "get", return_value=response({})) as get:
+        assert fetch(config) is None
+    assert get.call_count == 1
+    no_sleep.assert_not_called()
 
 
 @pytest.mark.parametrize("data", [{}, {"hourly": {}}, {"hourly": {"time": []}}])
